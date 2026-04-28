@@ -55,8 +55,22 @@ npm run test:frontend-smoke
 - The repository contains a `.gitignore` configured to exclude those items; verify it before committing.
 - If a secret is accidentally committed, rotate it immediately and inform the maintainers.
 
+5. Commit messages
+------------------
+- Use short, imperative summaries (e.g. `feat: add search endpoint`) and a fuller description in the message body when needed.
+- Avoid generic messages such as `Initial commit` for substantive commits.
+- You can use the supplied commit template `.gitmessage` as a starting point; to enable it locally:
+
+```bash
+git config commit.template .gitmessage
+```
+
+This helps maintain a clear history and makes releases easier to construct.
+
+- Open an Issue for questions or to request repository-level changes.
 5. Support
 ----------
+- Open an Issue for questions or to request repository-level changes.
 - Open an Issue for questions or to request repository-level changes.
 
 Thank you for helping improve VirtualTotes.

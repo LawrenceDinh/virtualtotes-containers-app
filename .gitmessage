@@ -1,0 +1,10 @@
+Short summary (use imperative, ~50 chars)
+
+Longer description (wrap at ~72 characters per line). Include context, motivation, and any migration notes.
+
+Reference: issue or PR number (e.g. "Refs: #123").
+
+Examples:
+- feat: add container move validation
+- fix: prevent photo path traversal in uploader
+- docs: update architecture and env example
