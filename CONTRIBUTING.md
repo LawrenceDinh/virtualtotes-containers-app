@@ -71,6 +71,5 @@ This helps maintain a clear history and makes releases easier to construct.
 5. Support
 ----------
 - Open an Issue for questions or to request repository-level changes.
-- Open an Issue for questions or to request repository-level changes.
 
 Thank you for helping improve VirtualTotes.
