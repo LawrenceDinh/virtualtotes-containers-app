@@ -108,9 +108,6 @@ Out of scope for Phase 1
 
 License
 -------
-
-## License
-
 Copyright © 2026 Luat "Lawrence" Dinh. All rights reserved.
 
 This repository is provided for portfolio and review purposes only. No permission is granted to copy, modify, distribute, or use this code commercially without written permission.
