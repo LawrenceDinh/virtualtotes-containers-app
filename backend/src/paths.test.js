@@ -69,12 +69,16 @@ test("shared path generation handles top-level and nested containers", () => {
       topLevelPath.path.map((segment) => segment.name),
       ["Garage Tote"]
     );
+    assert.deepEqual(
+      topLevelPath.path.map((segment) => segment.objectType),
+      ["container"]
+    );
 
     assert.equal(nestedPath.topLevel, false);
-    assert.equal(nestedPath.fullPath, "Garage Tote > Shelf Bin");
+    assert.equal(nestedPath.fullPath, "Shelf Bin > Garage Tote");
     assert.deepEqual(
       nestedPath.path.map((segment) => segment.name),
-      ["Garage Tote", "Shelf Bin"]
+      ["Shelf Bin", "Garage Tote"]
     );
   } finally {
     database.close();
@@ -98,9 +102,17 @@ test("shared path generation handles top-level and nested items", () => {
     assert.equal(topLevelPath.topLevel, true);
     assert.equal(topLevelPath.fullPath, "Loose Batteries");
     assert.equal(topLevelPath.currentParentContainer, null);
+    assert.deepEqual(
+      topLevelPath.path.map((segment) => segment.objectType),
+      ["item"]
+    );
 
     assert.equal(nestedPath.topLevel, false);
-    assert.equal(nestedPath.fullPath, "Garage Tote > Shelf Bin > Packing Tape");
+    assert.equal(nestedPath.fullPath, "Packing Tape > Shelf Bin > Garage Tote");
+    assert.deepEqual(
+      nestedPath.path.map((segment) => segment.objectType),
+      ["item", "container", "container"]
+    );
     assert.equal(nestedPath.currentParentContainer.name, "Shelf Bin");
   } finally {
     database.close();
@@ -127,11 +139,11 @@ test("shared path generation recalculates after container and item moves", () =>
 
     assert.equal(
       getContainerPathInfo(database, movedContainer).fullPath,
-      "Desk Drawer > Shelf Bin"
+      "Shelf Bin > Desk Drawer"
     );
     assert.equal(
       getItemPathInfo(database, movedItem).fullPath,
-      "Garage Tote > Packing Tape"
+      "Packing Tape > Garage Tote"
     );
   } finally {
     database.close();

@@ -33,6 +33,7 @@ const {
   listTopLevelItems,
   moveItem
 } = require("./items");
+const { getInventoryOverview } = require("./inventory-overview");
 const {
   getObjectPhotoFile,
   removeObjectPhoto,
@@ -402,6 +403,15 @@ function handleListRecentObjects(request, response) {
   sendJson(response, 200, result);
 }
 
+function handleGetInventoryOverview(request, response) {
+  const user = requireAuthenticatedUser(request);
+  const result = withDatabase((database) =>
+    getInventoryOverview(database, user.id)
+  );
+
+  sendJson(response, 200, result);
+}
+
 async function handleEditItem(request, response, itemId) {
   const user = requireAuthenticatedUser(request);
   const body = await readJsonBody(request);
@@ -578,6 +588,14 @@ async function handleRequest(request, response) {
     requestUrl.pathname === "/api/recent-objects"
   ) {
     handleListRecentObjects(request, response);
+    return;
+  }
+
+  if (
+    request.method === "GET" &&
+    requestUrl.pathname === "/api/inventory-overview"
+  ) {
+    handleGetInventoryOverview(request, response);
     return;
   }
 

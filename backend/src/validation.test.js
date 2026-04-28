@@ -211,7 +211,7 @@ test("validateQrUniqueness blocks duplicate qr codes across containers and items
   }
 });
 
-test("validateContainerMove prevents circular moves and validateContainerDeletion requires emptiness", () => {
+test("validateContainerMove prevents circular moves and validateContainerDeletion enforces ownership", () => {
   const database = createTestDatabase();
 
   try {
@@ -231,13 +231,13 @@ test("validateContainerMove prevents circular moves and validateContainerDeletio
       "descendants"
     );
 
-    assertHttpError(
-      () => validateContainerDeletion(database, 1, 1),
-      409,
-      "must be empty"
-    );
-
+    assert.equal(validateContainerDeletion(database, 1, 1).id, 1);
     assert.equal(validateContainerDeletion(database, 4, 1).id, 4);
+    assertHttpError(
+      () => validateContainerDeletion(database, 3, 1),
+      404,
+      "not found"
+    );
   } finally {
     database.close();
   }

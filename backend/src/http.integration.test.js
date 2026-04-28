@@ -414,6 +414,323 @@ test("HTTP integration covers auth and the core top-level container/item happy p
   }
 });
 
+test("HTTP integration returns authenticated inventory overview with owned paths", async () => {
+  const server = await startTestServer();
+
+  try {
+    const unauthenticatedOverview = await requestJson(
+      server.baseUrl,
+      "/api/inventory-overview"
+    );
+
+    assert.equal(unauthenticatedOverview.response.status, 401);
+    assert.equal(
+      unauthenticatedOverview.body.error,
+      "Authentication required"
+    );
+
+    const sessionCookie = await loginAndGetSessionCookie(server.baseUrl);
+
+    const createContainer = await requestJson(server.baseUrl, "/api/containers", {
+      body: JSON.stringify({
+        name: "Garage Tote"
+      }),
+      headers: createJsonHeaders(sessionCookie),
+      method: "POST"
+    });
+    const parentContainerId = createContainer.body.container.id;
+
+    const createChildContainer = await requestJson(
+      server.baseUrl,
+      `/api/containers/${parentContainerId}/children`,
+      {
+        body: JSON.stringify({
+          name: "Inner Bin"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+    const childContainerId = createChildContainer.body.container.id;
+
+    const createTopLevelItem = await requestJson(server.baseUrl, "/api/items", {
+      body: JSON.stringify({
+        name: "Loose Batteries"
+      }),
+      headers: createJsonHeaders(sessionCookie),
+      method: "POST"
+    });
+    const topLevelItemId = createTopLevelItem.body.item.id;
+
+    const createNestedItem = await requestJson(
+      server.baseUrl,
+      `/api/containers/${childContainerId}/items`,
+      {
+        body: JSON.stringify({
+          name: "Screwdriver"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+    const nestedItemId = createNestedItem.body.item.id;
+
+    const otherUserId = seedUser(server.databasePath, {
+      password: "otherpass",
+      username: "other"
+    });
+    const database = new Database(server.databasePath);
+
+    try {
+      database
+        .prepare("INSERT INTO containers (userId, name) VALUES (?, ?)")
+        .run(otherUserId, "Other Tote");
+      database
+        .prepare("INSERT INTO items (userId, name) VALUES (?, ?)")
+        .run(otherUserId, "Other Item");
+    } finally {
+      database.close();
+    }
+
+    const overview = await requestJson(server.baseUrl, "/api/inventory-overview", {
+      headers: {
+        Cookie: sessionCookie
+      }
+    });
+
+    assert.equal(overview.response.status, 200);
+    assert.deepEqual(overview.body.counts, {
+      containers: 2,
+      items: 2
+    });
+    assert.deepEqual(
+      overview.body.containers.map((container) => container.name),
+      ["Garage Tote", "Inner Bin"]
+    );
+    assert.deepEqual(
+      overview.body.items.map((item) => item.name),
+      ["Loose Batteries", "Screwdriver"]
+    );
+
+    const parentContainer = overview.body.containers.find(
+      (container) => container.id === parentContainerId
+    );
+    const childContainer = overview.body.containers.find(
+      (container) => container.id === childContainerId
+    );
+    const topLevelItem = overview.body.items.find(
+      (item) => item.id === topLevelItemId
+    );
+    const nestedItem = overview.body.items.find((item) => item.id === nestedItemId);
+
+    assert.equal(parentContainer.topLevel, true);
+    assert.equal(parentContainer.fullPath, "Garage Tote");
+    assert.equal(childContainer.topLevel, false);
+    assert.equal(childContainer.fullPath, "Inner Bin > Garage Tote");
+    assert.equal(topLevelItem.topLevel, true);
+    assert.equal(topLevelItem.fullPath, "Loose Batteries");
+    assert.equal(nestedItem.topLevel, false);
+    assert.equal(nestedItem.fullPath, "Screwdriver > Inner Bin > Garage Tote");
+    assert.deepEqual(
+      overview.body.relationshipPaths.map((relationshipPath) => relationshipPath.path),
+      [
+        "Top Level > Garage Tote",
+        "Top Level > Inner Bin > Garage Tote",
+        "Top Level > Loose Batteries",
+        "Top Level > Screwdriver > Inner Bin > Garage Tote"
+      ]
+    );
+    assert.equal(
+      overview.body.containers.some((container) => container.name === "Other Tote"),
+      false
+    );
+    assert.equal(
+      overview.body.items.some((item) => item.name === "Other Item"),
+      false
+    );
+  } finally {
+    await server.cleanup();
+  }
+});
+
+test("HTTP integration deletes non-empty containers by promoting direct children", async () => {
+  const server = await startTestServer();
+
+  try {
+    const sessionCookie = await loginAndGetSessionCookie(server.baseUrl);
+    const createParent = await requestJson(server.baseUrl, "/api/containers", {
+      body: JSON.stringify({
+        name: "Container Parent"
+      }),
+      headers: createJsonHeaders(sessionCookie),
+      method: "POST"
+    });
+    const parentId = createParent.body.container.id;
+    const createContainerA = await requestJson(
+      server.baseUrl,
+      `/api/containers/${parentId}/children`,
+      {
+        body: JSON.stringify({
+          name: "Container A"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+    const containerAId = createContainerA.body.container.id;
+    const createContainerB = await requestJson(
+      server.baseUrl,
+      `/api/containers/${containerAId}/children`,
+      {
+        body: JSON.stringify({
+          name: "Container B",
+          qrCode: "qr-container-b"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+    const containerBId = createContainerB.body.container.id;
+    const createContainerC = await requestJson(
+      server.baseUrl,
+      `/api/containers/${containerBId}/children`,
+      {
+        body: JSON.stringify({
+          name: "Nested Grandchild Container"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+    const containerCId = createContainerC.body.container.id;
+    const createItem1 = await requestJson(
+      server.baseUrl,
+      `/api/containers/${containerAId}/items`,
+      {
+        body: JSON.stringify({
+          name: "Item 1",
+          qrCode: "qr-item-1"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+    const item1Id = createItem1.body.item.id;
+    const createItem2 = await requestJson(
+      server.baseUrl,
+      `/api/containers/${containerBId}/items`,
+      {
+        body: JSON.stringify({
+          name: "Item 2"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+    const item2Id = createItem2.body.item.id;
+    const itemPhotoUpload = await requestJson(
+      server.baseUrl,
+      `/api/items/${item1Id}/photo`,
+      {
+        body: Buffer.from("item-one-photo"),
+        headers: {
+          "Content-Type": "image/png",
+          Cookie: sessionCookie
+        },
+        method: "POST"
+      }
+    );
+
+    assert.equal(itemPhotoUpload.response.status, 200);
+
+    const deleteContainerA = await requestJson(
+      server.baseUrl,
+      `/api/containers/${containerAId}`,
+      {
+        headers: {
+          Cookie: sessionCookie
+        },
+        method: "DELETE"
+      }
+    );
+
+    assert.equal(deleteContainerA.response.status, 200);
+    assert.deepEqual(deleteContainerA.body, {
+      success: true
+    });
+
+    const deletedContainer = await requestJson(
+      server.baseUrl,
+      `/api/containers/${containerAId}`,
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+
+    assert.equal(deletedContainer.response.status, 404);
+
+    const parentDetail = await requestJson(
+      server.baseUrl,
+      `/api/containers/${parentId}`,
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+
+    assert.equal(parentDetail.response.status, 200);
+    assert.deepEqual(
+      parentDetail.body.childContainers.map((container) => container.id),
+      [containerBId]
+    );
+    assert.deepEqual(
+      parentDetail.body.childItems.map((item) => item.id),
+      [item1Id]
+    );
+    assert.equal(parentDetail.body.childContainers[0].qrCode, "qr-container-b");
+    assert.equal(parentDetail.body.childItems[0].qrCode, "qr-item-1");
+    assert.equal(
+      parentDetail.body.childItems[0].photoPath,
+      itemPhotoUpload.body.item.photoPath
+    );
+
+    const promotedContainerDetail = await requestJson(
+      server.baseUrl,
+      `/api/containers/${containerBId}`,
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+
+    assert.equal(promotedContainerDetail.response.status, 200);
+    assert.equal(promotedContainerDetail.body.container.parentContainerId, parentId);
+    assert.deepEqual(
+      promotedContainerDetail.body.childContainers.map((container) => container.id),
+      [containerCId]
+    );
+    assert.deepEqual(
+      promotedContainerDetail.body.childItems.map((item) => item.id),
+      [item2Id]
+    );
+
+    const item2Detail = await requestJson(server.baseUrl, `/api/items/${item2Id}`, {
+      headers: {
+        Cookie: sessionCookie
+      }
+    });
+
+    assert.equal(item2Detail.response.status, 200);
+    assert.equal(item2Detail.body.item.parentContainerId, containerBId);
+  } finally {
+    await server.cleanup();
+  }
+});
+
 test("HTTP integration treats foreign objects as not found across read, parent, qr, and photo paths", async () => {
   const server = await startTestServer();
 

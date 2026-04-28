@@ -34,6 +34,7 @@ function formatContainerSearchResult(database, container) {
     objectId: container.id,
     objectType: "container",
     name: container.name,
+    path: pathInfo.path,
     pathContext: pathInfo.topLevel ? "Top level" : pathInfo.fullPath,
     topLevel: pathInfo.topLevel
   };
@@ -46,6 +47,7 @@ function formatItemSearchResult(database, item) {
     objectId: item.id,
     objectType: "item",
     name: item.name,
+    path: pathInfo.path,
     pathContext: pathInfo.topLevel ? "Top level" : pathInfo.fullPath,
     topLevel: pathInfo.topLevel
   };

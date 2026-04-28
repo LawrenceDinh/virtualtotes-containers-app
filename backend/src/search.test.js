@@ -67,6 +67,13 @@ test("searchObjects returns both containers and items with path context and top-
           objectId: 3,
           objectType: "container",
           name: "Cable Box",
+          path: [
+            {
+              id: 3,
+              name: "Cable Box",
+              objectType: "container"
+            }
+          ],
           pathContext: "Top level",
           topLevel: true
         },
@@ -74,7 +81,24 @@ test("searchObjects returns both containers and items with path context and top-
           objectId: 2,
           objectType: "item",
           name: "Cable Charger",
-          pathContext: "Garage Tote > Shelf Bin > Cable Charger",
+          path: [
+            {
+              id: 2,
+              name: "Cable Charger",
+              objectType: "item"
+            },
+            {
+              id: 2,
+              name: "Shelf Bin",
+              objectType: "container"
+            },
+            {
+              id: 1,
+              name: "Garage Tote",
+              objectType: "container"
+            }
+          ],
+          pathContext: "Cable Charger > Shelf Bin > Garage Tote",
           topLevel: false
         }
       ]
@@ -97,6 +121,13 @@ test("searchObjects returns top-level context and respects ownership", () => {
           objectId: 3,
           objectType: "item",
           name: "Loose Batteries",
+          path: [
+            {
+              id: 3,
+              name: "Loose Batteries",
+              objectType: "item"
+            }
+          ],
           pathContext: "Top level",
           topLevel: true
         }

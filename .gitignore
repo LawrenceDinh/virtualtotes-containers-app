@@ -31,3 +31,11 @@ AGENTS.md
 updates/
 *prompt*.md
 
+# Internal planning and agent artifacts
+container_app_context_plans.txt
+.codex
+app_progress.md
+cr_*.md
+frontend-secrets/
+transcripts/
+

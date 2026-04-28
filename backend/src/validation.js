@@ -231,19 +231,7 @@ function validateContainerMove(
 }
 
 function validateContainerDeletion(database, containerId, userId) {
-  const container = validateOwnedObject(database, "container", containerId, userId);
-  const childContainerCount = database
-    .prepare("SELECT COUNT(*) AS count FROM containers WHERE parentContainerId = ?")
-    .get(container.id).count;
-  const childItemCount = database
-    .prepare("SELECT COUNT(*) AS count FROM items WHERE parentContainerId = ?")
-    .get(container.id).count;
-
-  if (childContainerCount > 0 || childItemCount > 0) {
-    throw createHttpError(409, "Container must be empty before deletion");
-  }
-
-  return container;
+  return validateOwnedObject(database, "container", containerId, userId);
 }
 
 function validateObjectPayload(database, objectType, payload, options = {}) {

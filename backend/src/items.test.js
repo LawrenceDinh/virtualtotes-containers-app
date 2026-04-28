@@ -127,7 +127,7 @@ test("getItemDetail returns item info, top-level status, full path, and current 
 
     assert.equal(nestedDetail.item.name, "Packing Tape");
     assert.equal(nestedDetail.topLevel, false);
-    assert.equal(nestedDetail.fullPath, "Garage Tote > Packing Tape");
+    assert.equal(nestedDetail.fullPath, "Packing Tape > Garage Tote");
     assert.equal(nestedDetail.currentParentContainer.id, 1);
     assert.equal(nestedDetail.currentParentContainer.name, "Garage Tote");
   } finally {
@@ -196,7 +196,7 @@ test("moveItem supports all phase-1 movement paths and enforces route boundaries
     });
 
     assert.equal(intoContainer.topLevel, false);
-    assert.equal(intoContainer.fullPath, "Garage Tote > Loose Batteries");
+    assert.equal(intoContainer.fullPath, "Loose Batteries > Garage Tote");
     assert.equal(intoContainer.currentParentContainer.id, 1);
 
     const intoDifferentContainer = moveItem(database, 1, 1, {
@@ -204,7 +204,10 @@ test("moveItem supports all phase-1 movement paths and enforces route boundaries
     });
 
     assert.equal(intoDifferentContainer.topLevel, false);
-    assert.equal(intoDifferentContainer.fullPath, "Garage Tote > Shelf Bin > Loose Batteries");
+    assert.equal(
+      intoDifferentContainer.fullPath,
+      "Loose Batteries > Shelf Bin > Garage Tote"
+    );
     assert.equal(intoDifferentContainer.currentParentContainer.id, 2);
 
     const backToTopLevel = moveItem(database, 2, 1, {

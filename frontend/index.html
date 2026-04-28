@@ -9,8 +9,6 @@
   <body>
     <main class="app-shell">
       <header class="app-header panel">
-        <button class="nav-button nav-back" type="button" data-nav-back hidden aria-label="Back">‹</button>
-        <button class="nav-button nav-forward" type="button" data-nav-forward hidden aria-label="Forward">›</button>
         <div class="header-copy">
           <p class="eyebrow">Home Inventory</p>
           <h1>Home Inventory</h1>
@@ -30,6 +28,35 @@
             Log Out
           </button>
         </div>
+        <nav class="app-nav" data-app-nav hidden aria-label="Page navigation">
+          <button
+            class="nav-button"
+            type="button"
+            data-nav-back
+            aria-label="Back"
+            title="Back"
+          >
+            ‹
+          </button>
+          <button
+            class="nav-button nav-home"
+            type="button"
+            data-nav-home
+            aria-label="Home"
+            title="Home"
+          >
+            Home
+          </button>
+          <button
+            class="nav-button"
+            type="button"
+            data-nav-forward
+            aria-label="Forward"
+            title="Forward"
+          >
+            ›
+          </button>
+        </nav>
       </header>
 
       <section class="panel stack" data-login-panel hidden>
@@ -175,7 +202,97 @@
               Open a container or item to see it here.
             </p>
           </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Overview</p>
+                <h2>Inventory Overview</h2>
+              </div>
+              <p class="section-summary" data-inventory-stats-summary>
+                Loading inventory stats...
+              </p>
+            </div>
+
+            <div class="count-grid">
+              <div class="count-card">
+                <p class="count-label">Containers</p>
+                <p class="count-value" data-inventory-container-count>0</p>
+              </div>
+              <div class="count-card">
+                <p class="count-label">Items</p>
+                <p class="count-value" data-inventory-item-count>0</p>
+              </div>
+            </div>
+
+            <button
+              class="secondary-button"
+              type="button"
+              data-inventory-overview-link
+            >
+              View Full Inventory
+            </button>
+          </section>
         </div>
+
+        <section class="detail-page" data-inventory-overview-page hidden>
+          <div class="detail-header">
+            <a class="back-link" href="/">Back to Home</a>
+            <p class="section-kicker">Overview</p>
+            <h2>Inventory Overview</h2>
+            <p class="section-summary" data-inventory-overview-summary>
+              Loading inventory overview...
+            </p>
+          </div>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">All</p>
+                <h2>Items</h2>
+              </div>
+              <p class="section-summary" data-inventory-items-summary>
+                Loading items...
+              </p>
+            </div>
+            <ul class="object-list" data-inventory-items></ul>
+            <p class="empty-state" data-inventory-items-empty hidden>
+              No items yet.
+            </p>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">All</p>
+                <h2>Containers</h2>
+              </div>
+              <p class="section-summary" data-inventory-containers-summary>
+                Loading containers...
+              </p>
+            </div>
+            <ul class="object-list" data-inventory-containers></ul>
+            <p class="empty-state" data-inventory-containers-empty hidden>
+              No containers yet.
+            </p>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Map</p>
+                <h2>Relationship Paths</h2>
+              </div>
+              <p class="section-summary" data-inventory-paths-summary>
+                Loading relationship paths...
+              </p>
+            </div>
+            <ul class="path-list" data-inventory-paths></ul>
+            <p class="empty-state" data-inventory-paths-empty hidden>
+              No paths yet.
+            </p>
+          </section>
+        </section>
 
         <section class="panel detail-page" data-scan-page hidden>
           <div class="detail-header">
@@ -818,6 +935,7 @@
             </p>
           </section>
         </section>
+
       </div>
     </main>
 

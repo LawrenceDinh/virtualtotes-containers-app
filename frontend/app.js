@@ -1,5 +1,6 @@
 const ui = {
   addEntryButton: document.querySelector("[data-add-entry]"),
+  appNav: document.querySelector("[data-app-nav]"),
   containerActionNote: document.querySelector("[data-container-action-note]"),
   containerAddContainerButton: document.querySelector("[data-container-add-container]"),
   containerAddItemButton: document.querySelector("[data-container-add-item]"),
@@ -61,6 +62,37 @@ const ui = {
   entryNoteNode: document.querySelector("[data-entry-note]"),
   homeSections: document.querySelector("[data-home-sections]"),
   homeView: document.querySelector("[data-home-view]"),
+  inventoryContainerCountNode: document.querySelector(
+    "[data-inventory-container-count]"
+  ),
+  inventoryContainersEmptyNode: document.querySelector(
+    "[data-inventory-containers-empty]"
+  ),
+  inventoryContainersListNode: document.querySelector(
+    "[data-inventory-containers]"
+  ),
+  inventoryContainersSummaryNode: document.querySelector(
+    "[data-inventory-containers-summary]"
+  ),
+  inventoryItemCountNode: document.querySelector("[data-inventory-item-count]"),
+  inventoryItemsEmptyNode: document.querySelector("[data-inventory-items-empty]"),
+  inventoryItemsListNode: document.querySelector("[data-inventory-items]"),
+  inventoryItemsSummaryNode: document.querySelector(
+    "[data-inventory-items-summary]"
+  ),
+  inventoryOverviewLink: document.querySelector("[data-inventory-overview-link]"),
+  inventoryOverviewPage: document.querySelector("[data-inventory-overview-page]"),
+  inventoryOverviewSummaryNode: document.querySelector(
+    "[data-inventory-overview-summary]"
+  ),
+  inventoryPathsEmptyNode: document.querySelector("[data-inventory-paths-empty]"),
+  inventoryPathsListNode: document.querySelector("[data-inventory-paths]"),
+  inventoryPathsSummaryNode: document.querySelector(
+    "[data-inventory-paths-summary]"
+  ),
+  inventoryStatsSummaryNode: document.querySelector(
+    "[data-inventory-stats-summary]"
+  ),
   itemActionNote: document.querySelector("[data-item-action-note]"),
   itemDeleteButton: document.querySelector("[data-item-delete]"),
   itemEditButton: document.querySelector("[data-item-edit]"),
@@ -184,9 +216,10 @@ const ui = {
   ),
   unknownQrSummaryNode: document.querySelector("[data-unknown-qr-summary]"),
   unknownQrTitleNode: document.querySelector("[data-unknown-qr-title]"),
-  usernameInput: document.querySelector("[data-username-input]")
-  ,navBackButton: document.querySelector("[data-nav-back]")
-  ,navForwardButton: document.querySelector("[data-nav-forward]")
+  usernameInput: document.querySelector("[data-username-input]"),
+  navBackButton: document.querySelector("[data-nav-back]"),
+  navForwardButton: document.querySelector("[data-nav-forward]"),
+  navHomeButton: document.querySelector("[data-nav-home]")
 };
 
 let currentContainerDetail = null;
@@ -268,19 +301,36 @@ function getRecentObjectContext(recentObject) {
     return "Top level";
   }
 
-  const suffix = ` > ${recentObject.name}`;
+  return recentObject.pathContext || "Location unavailable";
+}
 
-  if (recentObject.pathContext.endsWith(suffix)) {
-    const parentPath = recentObject.pathContext.slice(0, -suffix.length);
+function buildPathSegmentHref(segment) {
+  return buildObjectPath(segment.objectType, segment.id);
+}
 
-    if (parentPath) {
-      return recentObject.objectType === "container"
-        ? `Inside ${parentPath}`
-        : `In ${parentPath}`;
-    }
+function renderPathLinks(targetNode, pathSegments, fallbackText) {
+  targetNode.replaceChildren();
+
+  if (!Array.isArray(pathSegments) || pathSegments.length === 0) {
+    targetNode.textContent = fallbackText;
+    return;
   }
 
-  return recentObject.pathContext;
+  pathSegments.forEach((segment, index) => {
+    if (index > 0) {
+      const separatorNode = document.createElement("span");
+      separatorNode.className = "path-separator";
+      separatorNode.textContent = " > ";
+      targetNode.append(separatorNode);
+    }
+
+    const linkNode = document.createElement("a");
+    linkNode.className = "path-link";
+    linkNode.href = buildPathSegmentHref(segment);
+    linkNode.dataset.pathLink = "";
+    linkNode.textContent = segment.name;
+    targetNode.append(linkNode);
+  });
 }
 
 function createObjectRow({
@@ -288,14 +338,33 @@ function createObjectRow({
   context,
   href,
   name,
+  pathSegments = null,
   thumbnailAlt = "",
   thumbnailPlaceholder = "",
   thumbnailUrl = null
 }) {
   const row = ui.rowTemplate.content.firstElementChild.cloneNode(true);
   const link = row.querySelector("[data-object-link]");
+  const objectCopyNode = row.querySelector(".object-copy");
+  const nameNode = row.querySelector(".object-name");
+  const contextNode = row.querySelector(".object-context");
 
   link.href = href;
+
+  if (Array.isArray(pathSegments) && pathSegments.length > 0) {
+    const rowNode = document.createElement("div");
+    rowNode.className = link.className;
+    link.replaceWith(rowNode);
+    rowNode.append(...Array.from(link.childNodes));
+
+    const nameLinkNode = document.createElement("a");
+    nameLinkNode.className = "object-name-link";
+    nameLinkNode.href = href;
+    nameLinkNode.dataset.objectLink = "";
+    nameLinkNode.textContent = name;
+    nameNode.replaceChildren(nameLinkNode);
+    renderPathLinks(contextNode, pathSegments, context);
+  }
 
   if (thumbnailUrl || thumbnailPlaceholder) {
     const thumbnailNode = document.createElement("div");
@@ -316,11 +385,16 @@ function createObjectRow({
       thumbnailNode.append(placeholderNode);
     }
 
-    link.insertBefore(thumbnailNode, link.firstElementChild);
+    const rowShell = row.querySelector(".object-row");
+    rowShell.insertBefore(thumbnailNode, rowShell.firstElementChild);
   }
 
-  row.querySelector(".object-name").textContent = name;
-  row.querySelector(".object-context").textContent = context;
+  if (!Array.isArray(pathSegments) || pathSegments.length === 0) {
+    nameNode.textContent = name;
+    contextNode.textContent = context;
+  }
+
+  objectCopyNode.hidden = false;
   row.querySelector(".object-badge").textContent = badge;
 
   return row;
@@ -355,6 +429,12 @@ function getCurrentRoute() {
   if (normalizedPath === "/") {
     return {
       name: "home"
+    };
+  }
+
+  if (normalizedPath === "/inventory-overview") {
+    return {
+      name: "inventory-overview"
     };
   }
 
@@ -472,6 +552,7 @@ function setActiveView(viewName) {
   const panels = [
     ui.homeView,
     ui.searchSection,
+    ui.inventoryOverviewPage,
     ui.containerMovePage,
     ui.itemMovePage,
     ui.objectFormPage,
@@ -489,6 +570,7 @@ function setActiveView(viewName) {
     container: ui.containerPage,
     "container-move": ui.containerMovePage,
     home: ui.homeView,
+    "inventory-overview": ui.inventoryOverviewPage,
     item: ui.itemPage,
     "item-move": ui.itemMovePage,
     "object-form": ui.objectFormPage,
@@ -498,16 +580,6 @@ function setActiveView(viewName) {
   const activePanel = panelByViewName[viewName] || ui.homeView;
 
   activePanel.hidden = false;
-
-  // Show back button on non-home views, hide on home
-  if (ui.navBackButton) {
-    ui.navBackButton.hidden = viewName === "home";
-  }
-
-  // Keep forward button visible but allow browser to handle availability
-  if (ui.navForwardButton) {
-    ui.navForwardButton.hidden = false;
-  }
 }
 
 function showSearchPlaceholder() {
@@ -532,6 +604,9 @@ function resetHomeData() {
   ui.containerSummaryNode.textContent = "Loading containers...";
   ui.itemSummaryNode.textContent = "Loading items...";
   ui.recentSummaryNode.textContent = "Loading recent objects...";
+  ui.inventoryStatsSummaryNode.textContent = "Loading inventory stats...";
+  ui.inventoryContainerCountNode.textContent = "0";
+  ui.inventoryItemCountNode.textContent = "0";
   renderObjectList(
     ui.containerListNode,
     ui.containerEmptyNode,
@@ -551,6 +626,26 @@ function resetHomeData() {
     "Open a container or item to see it here."
   );
   showSearchPlaceholder();
+}
+
+function resetInventoryOverviewPage() {
+  ui.inventoryOverviewSummaryNode.textContent = "Loading inventory overview...";
+  ui.inventoryItemsSummaryNode.textContent = "Loading items...";
+  ui.inventoryContainersSummaryNode.textContent = "Loading containers...";
+  ui.inventoryPathsSummaryNode.textContent = "Loading relationship paths...";
+  renderObjectList(
+    ui.inventoryItemsListNode,
+    ui.inventoryItemsEmptyNode,
+    [],
+    "No items yet."
+  );
+  renderObjectList(
+    ui.inventoryContainersListNode,
+    ui.inventoryContainersEmptyNode,
+    [],
+    "No containers yet."
+  );
+  renderPathList([], "No paths yet.");
 }
 
 function resetScanPage() {
@@ -976,6 +1071,7 @@ function stopQrScan() {
 function showSignedOutState(message) {
   ui.loginPanel.hidden = false;
   ui.homeSections.hidden = true;
+  ui.appNav.hidden = true;
   ui.logoutButton.hidden = true;
   ui.sessionStatusNode.textContent = "Sign in required";
   ui.passwordInput.value = "";
@@ -1005,6 +1101,7 @@ function showSignedInState(user) {
   hideLoginError();
   ui.loginPanel.hidden = true;
   ui.homeSections.hidden = false;
+  ui.appNav.hidden = false;
   ui.logoutButton.hidden = false;
   ui.sessionStatusNode.textContent = `Signed in as ${user.username}`;
   setActiveView("home");
@@ -1080,6 +1177,7 @@ async function loadRecentObjects() {
       context: getRecentObjectContext(recentObject),
       href: buildObjectPath(recentObject.objectType, recentObject.objectId),
       name: recentObject.name,
+      pathSegments: recentObject.topLevel ? null : recentObject.path,
       ...buildThumbnailOptions(
         recentObject.objectType,
         recentObject.objectId,
@@ -1104,6 +1202,125 @@ async function loadRecentObjects() {
   );
 }
 
+async function loadInventoryStats() {
+  const data = await fetchJson("/api/inventory-overview");
+
+  ui.inventoryContainerCountNode.textContent = String(data.counts.containers);
+  ui.inventoryItemCountNode.textContent = String(data.counts.items);
+  ui.inventoryStatsSummaryNode.textContent = `${formatCount(
+    data.counts.containers,
+    "container",
+    "containers"
+  )} and ${formatCount(data.counts.items, "item", "items")} tracked.`;
+}
+
+function getOverviewObjectContext(object) {
+  return object.topLevel ? "Top level" : object.fullPath;
+}
+
+function renderPathList(paths, emptyMessage) {
+  const rows = paths.map((relationshipPath) => {
+    const row = document.createElement("li");
+    const pathNode = document.createElement("p");
+    const pathContentNode = document.createElement("span");
+    const typeNode = document.createElement("span");
+
+    pathNode.className = "path-row";
+    pathContentNode.className = "path-content";
+    pathContentNode.textContent = "Top Level";
+
+    if (
+      Array.isArray(relationshipPath.pathSegments) &&
+      relationshipPath.pathSegments.length > 0
+    ) {
+      const separatorNode = document.createElement("span");
+      separatorNode.className = "path-separator";
+      separatorNode.textContent = " > ";
+      const linksNode = document.createElement("span");
+
+      renderPathLinks(
+        linksNode,
+        relationshipPath.pathSegments,
+        relationshipPath.path.replace(/^Top Level > /, "")
+      );
+      pathContentNode.append(separatorNode, linksNode);
+    } else if (relationshipPath.path) {
+      pathContentNode.textContent = relationshipPath.path;
+    }
+
+    typeNode.className = "object-badge";
+    typeNode.textContent =
+      relationshipPath.objectType === "container" ? "Container" : "Item";
+    pathNode.append(pathContentNode, typeNode);
+    row.append(pathNode);
+    return row;
+  });
+  const isEmpty = rows.length === 0;
+
+  ui.inventoryPathsListNode.replaceChildren(...rows);
+  ui.inventoryPathsListNode.hidden = isEmpty;
+  ui.inventoryPathsEmptyNode.hidden = !isEmpty;
+  ui.inventoryPathsEmptyNode.textContent = emptyMessage;
+}
+
+function renderInventoryOverview(data) {
+  const itemRows = data.items.map((item) =>
+    createObjectRow({
+      badge: "Item",
+      context: getOverviewObjectContext(item),
+      href: buildObjectPath("item", item.id),
+      name: item.name,
+      pathSegments: item.topLevel ? null : item.path
+    })
+  );
+  const containerRows = data.containers.map((container) =>
+    createObjectRow({
+      badge: "Container",
+      context: getOverviewObjectContext(container),
+      href: buildObjectPath("container", container.id),
+      name: container.name,
+      pathSegments: container.topLevel ? null : container.path
+    })
+  );
+
+  ui.inventoryOverviewSummaryNode.textContent = `${formatCount(
+    data.counts.containers,
+    "container",
+    "containers"
+  )} and ${formatCount(data.counts.items, "item", "items")} in inventory.`;
+  updateCountSummary(
+    ui.inventoryItemsSummaryNode,
+    data.items.length,
+    "item",
+    "items"
+  );
+  updateCountSummary(
+    ui.inventoryContainersSummaryNode,
+    data.containers.length,
+    "container",
+    "containers"
+  );
+  updateCountSummary(
+    ui.inventoryPathsSummaryNode,
+    data.relationshipPaths.length,
+    "path",
+    "paths"
+  );
+  renderObjectList(
+    ui.inventoryItemsListNode,
+    ui.inventoryItemsEmptyNode,
+    itemRows,
+    "No items yet."
+  );
+  renderObjectList(
+    ui.inventoryContainersListNode,
+    ui.inventoryContainersEmptyNode,
+    containerRows,
+    "No containers yet."
+  );
+  renderPathList(data.relationshipPaths, "No paths yet.");
+}
+
 async function runSearch(query) {
   ui.searchSection.hidden = false;
   ui.searchSummaryNode.textContent = `Searching for "${query}"...`;
@@ -1114,7 +1331,8 @@ async function runSearch(query) {
       badge: result.objectType === "container" ? "Container" : "Item",
       context: getSearchResultContext(result),
       href: buildObjectPath(result.objectType, result.objectId),
-      name: result.name
+      name: result.name,
+      pathSegments: result.topLevel ? null : result.path
     })
   );
 
@@ -1173,12 +1391,27 @@ function handleSearchResultsClick(event) {
   navigateTo(link.getAttribute("href"));
 }
 
+function handlePathLinkClick(event) {
+  const link = event.target.closest("[data-path-link]");
+
+  if (!link) {
+    return;
+  }
+
+  event.preventDefault();
+  navigateTo(link.getAttribute("href"));
+}
+
 function handleScanEntryClick() {
   navigateTo("/scan");
 }
 
 function handleAddEntryClick() {
   window.location.assign("/objects/new");
+}
+
+function handleInventoryOverviewLinkClick() {
+  navigateTo("/inventory-overview");
 }
 
 async function renderHomeView() {
@@ -1188,7 +1421,8 @@ async function renderHomeView() {
   const results = await Promise.allSettled([
     loadTopLevelContainers(),
     loadTopLevelItems(),
-    loadRecentObjects()
+    loadRecentObjects(),
+    loadInventoryStats()
   ]);
 
   const authError = results.find(
@@ -1200,7 +1434,7 @@ async function renderHomeView() {
     return;
   }
 
-  const [containersResult, itemsResult, recentResult] = results;
+  const [containersResult, itemsResult, recentResult, inventoryStatsResult] = results;
 
   if (containersResult.status === "rejected") {
     showLoadError(
@@ -1227,6 +1461,43 @@ async function renderHomeView() {
       ui.recentEmptyNode,
       "Could not load recent objects."
     );
+  }
+
+  if (inventoryStatsResult.status === "rejected") {
+    ui.inventoryStatsSummaryNode.textContent = "Could not load inventory stats.";
+    ui.inventoryContainerCountNode.textContent = "-";
+    ui.inventoryItemCountNode.textContent = "-";
+  }
+}
+
+async function renderInventoryOverviewPage() {
+  setActiveView("inventory-overview");
+  resetInventoryOverviewPage();
+
+  try {
+    const data = await fetchJson("/api/inventory-overview");
+    renderInventoryOverview(data);
+  } catch (error) {
+    if (error.status === 401) {
+      showSignedOutState("Session expired. Sign in again.");
+      return;
+    }
+
+    ui.inventoryOverviewSummaryNode.textContent =
+      "Could not load inventory overview.";
+    renderObjectList(
+      ui.inventoryItemsListNode,
+      ui.inventoryItemsEmptyNode,
+      [],
+      "Items are unavailable."
+    );
+    renderObjectList(
+      ui.inventoryContainersListNode,
+      ui.inventoryContainersEmptyNode,
+      [],
+      "Containers are unavailable."
+    );
+    renderPathList([], "Relationship paths are unavailable.");
   }
 }
 
@@ -1255,7 +1526,7 @@ function renderContainerDetail(detail) {
     "child container",
     "child containers"
   )} and ${formatCount(detail.itemCount, "item", "items")}.`;
-  ui.containerFullPathNode.textContent = detail.fullPath;
+  renderPathLinks(ui.containerFullPathNode, detail.path, detail.fullPath);
   ui.containerQrStatusNode.textContent = getQrStatus(detail.container.qrCode);
   ui.containerItemCountNode.textContent = String(detail.itemCount);
   ui.containerSubcontainerCountNode.textContent = String(
@@ -1361,7 +1632,11 @@ function renderItemDetail(detail) {
   ui.itemPageSummaryNode.textContent = detail.topLevel
     ? "Top-level item."
     : `Currently inside ${detail.currentParentContainer.name}.`;
-  ui.itemLocationNode.textContent = detail.topLevel ? "Top Level" : detail.fullPath;
+  if (detail.topLevel) {
+    ui.itemLocationNode.textContent = "Top Level";
+  } else {
+    renderPathLinks(ui.itemLocationNode, detail.path, detail.fullPath);
+  }
   ui.itemQrStatusNode.textContent = getQrStatus(detail.item.qrCode);
   ui.itemActionNote.textContent =
     "Edit details, move this item, or delete it from here.";
@@ -2344,6 +2619,11 @@ async function renderCurrentRoute() {
     return;
   }
 
+  if (route.name === "inventory-overview") {
+    await renderInventoryOverviewPage();
+    return;
+  }
+
   if (route.name === "container") {
     await renderContainerPage(route.containerId);
     return;
@@ -2452,10 +2732,6 @@ function getContainerDeleteErrorMessage(error) {
     return "Could not delete this container right now.";
   }
 
-  if (error.status === 409 || error.message.includes("must be empty")) {
-    return "This container is not empty yet. Move or delete its child containers and items before deleting it.";
-  }
-
   return error.message;
 }
 
@@ -2466,7 +2742,11 @@ async function handleContainerDeleteClick() {
 
   const { container } = currentContainerDetail;
 
-  if (!window.confirm(`Delete "${container.name}"? This only works for empty containers.`)) {
+  if (
+    !window.confirm(
+      `Delete "${container.name}"? This will not delete its contents. Direct child items and containers will move up one level.`
+    )
+  ) {
     return;
   }
 
@@ -3013,14 +3293,18 @@ async function initializeApp() {
 }
 
 ui.loginForm.addEventListener("submit", handleLoginSubmit);
+document.addEventListener("click", handlePathLinkClick);
 ui.logoutButton.addEventListener("click", handleLogoutClick);
 ui.searchForm.addEventListener("submit", handleSearchSubmit);
 ui.searchInput.addEventListener("input", handleSearchInput);
 ui.searchResultsNode.addEventListener("click", handleSearchResultsClick);
+ui.inventoryItemsListNode.addEventListener("click", handleSearchResultsClick);
+ui.inventoryContainersListNode.addEventListener("click", handleSearchResultsClick);
 ui.scanEntryButton.addEventListener("click", handleScanEntryClick);
 ui.scanManualForm.addEventListener("submit", handleScanManualSubmit);
 ui.scanRetryButton.addEventListener("click", handleScanRetryClick);
 ui.addEntryButton.addEventListener("click", handleAddEntryClick);
+ui.inventoryOverviewLink.addEventListener("click", handleInventoryOverviewLinkClick);
 ui.containerAddItemButton.addEventListener("click", handleContainerAddItemClick);
 ui.containerAddContainerButton.addEventListener(
   "click",
@@ -3096,6 +3380,12 @@ if (ui.navForwardButton) {
     } catch (e) {
       // no-op
     }
+  });
+}
+
+if (ui.navHomeButton) {
+  ui.navHomeButton.addEventListener("click", () => {
+    navigateTo("/");
   });
 }
 

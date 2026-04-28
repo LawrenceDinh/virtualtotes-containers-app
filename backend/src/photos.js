@@ -183,6 +183,7 @@ function getObjectPhotoFile(database, objectType, objectId, userId) {
 module.exports = {
   PHOTO_CONTENT_TYPE_BY_EXTENSION,
   PHOTO_EXTENSION_BY_MIME_TYPE,
+  deleteStoredPhotoIfPresent,
   getObjectPhotoFile,
   removeObjectPhoto,
   storeObjectPhoto

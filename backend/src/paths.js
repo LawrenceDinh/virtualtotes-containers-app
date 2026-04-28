@@ -28,7 +28,8 @@ function getContainerPathSegments(database, container) {
     visitedContainerIds.add(currentContainer.id);
     pathSegments.push({
       id: currentContainer.id,
-      name: currentContainer.name
+      name: currentContainer.name,
+      objectType: "container"
     });
 
     if (currentContainer.parentContainerId === null) {
@@ -42,7 +43,6 @@ function getContainerPathSegments(database, container) {
     }
   }
 
-  pathSegments.reverse();
   return pathSegments;
 }
 
@@ -64,7 +64,8 @@ function getItemPathInfo(database, item) {
       path: [
         {
           id: item.id,
-          name: item.name
+          name: item.name,
+          objectType: "item"
         }
       ],
       topLevel: true
@@ -95,11 +96,12 @@ function getItemPathInfo(database, item) {
 
   const containerPathInfo = getContainerPathInfo(database, currentParentContainer);
   const path = [
-    ...containerPathInfo.path,
     {
       id: item.id,
-      name: item.name
-    }
+      name: item.name,
+      objectType: "item"
+    },
+    ...containerPathInfo.path
   ];
 
   return {

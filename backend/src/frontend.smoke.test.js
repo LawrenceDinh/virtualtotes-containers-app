@@ -34,6 +34,16 @@ function defaultRouteHandlers() {
       createJsonResponse(200, {
         items: []
       }),
+    "GET /api/inventory-overview": () =>
+      createJsonResponse(200, {
+        containers: [],
+        counts: {
+          containers: 0,
+          items: 0
+        },
+        items: [],
+        relationshipPaths: []
+      }),
     "GET /api/recent-objects": () =>
       createJsonResponse(200, {
         recentObjects: []
@@ -197,7 +207,19 @@ test("frontend smoke covers login happy path", async () => {
               name: "Packing Tape",
               objectId: 2,
               objectType: "item",
-              pathContext: "Garage Tote > Packing Tape",
+              path: [
+                {
+                  id: 2,
+                  name: "Packing Tape",
+                  objectType: "item"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ],
+              pathContext: "Packing Tape > Garage Tote",
               photoPath: "item-2-photo.jpg",
               photoUrl: "/api/photos/item/2?v=item-2-photo.jpg",
               topLevel: false
@@ -274,7 +296,19 @@ test("frontend smoke covers recent objects rendering", async () => {
               name: "Packing Tape",
               objectId: 2,
               objectType: "item",
-              pathContext: "Garage Tote > Packing Tape",
+              path: [
+                {
+                  id: 2,
+                  name: "Packing Tape",
+                  objectType: "item"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ],
+              pathContext: "Packing Tape > Garage Tote",
               photoPath: "item-2-photo.jpg",
               photoUrl: "/api/photos/item/2?v=item-2-photo.jpg",
               topLevel: false
@@ -307,6 +341,9 @@ test("frontend smoke covers recent objects rendering", async () => {
       const recentLinks = Array.from(
         document.querySelectorAll("[data-recent-objects] [data-object-link]")
       );
+      const recentRows = Array.from(
+        document.querySelectorAll("[data-recent-objects] li")
+      );
 
       assert.equal(document.querySelector("[data-home-sections]").hidden, false);
       assert.equal(document.querySelector("[data-recent-summary]").textContent, "4 recent objects");
@@ -322,13 +359,19 @@ test("frontend smoke covers recent objects rendering", async () => {
         "/api/photos/container/1?v=container-1-photo.jpg"
       );
       assert.equal(recentLinks[1].getAttribute("href"), "/items/2");
-      assert.equal(recentLinks[1].querySelector(".object-name").textContent, "Packing Tape");
+      assert.equal(recentLinks[1].textContent, "Packing Tape");
       assert.equal(
-        recentLinks[1].querySelector(".object-context").textContent,
-        "In Garage Tote"
+        recentRows[1].querySelector(".object-context").textContent,
+        "Packing Tape > Garage Tote"
       );
       assert.equal(
-        recentLinks[1].querySelector(".object-thumbnail-image").getAttribute("src"),
+        recentRows[1]
+          .querySelector('.object-context [href="/containers/1"]')
+          .textContent,
+        "Garage Tote"
+      );
+      assert.equal(
+        recentRows[1].querySelector(".object-thumbnail-image").getAttribute("src"),
         "/api/photos/item/2?v=item-2-photo.jpg"
       );
       assert.equal(recentLinks[2].getAttribute("href"), "/containers/3");
@@ -365,6 +408,420 @@ test("frontend smoke covers recent objects rendering", async () => {
       ),
       true
     );
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke renders header navigation below the signed-in header", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/containers/1",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/containers/1": () =>
+        createJsonResponse(200, {
+          childContainers: [],
+          childItems: [],
+          container: {
+            id: 1,
+            name: "Garage Tote",
+            parentContainerId: null,
+            photoPath: null,
+            qrCode: null
+          },
+          fullPath: "Garage Tote",
+          itemCount: 0,
+          subcontainerCount: 0
+        })
+    }
+  });
+
+  try {
+    const { document, window } = harness;
+    const navigations = [];
+
+    window.navigateTo = (path) => {
+      navigations.push(path);
+    };
+
+    await waitFor(() => {
+      assert.equal(document.querySelector("[data-container-page]").hidden, false);
+      assert.equal(document.querySelector("[data-app-nav]").hidden, false);
+    });
+
+    assert.equal(document.querySelector("[data-bottom-nav]"), null);
+
+    const appHeader = document.querySelector(".app-header");
+    const appNav = appHeader.querySelector("[data-app-nav]");
+    const headerChildren = Array.from(appHeader.children);
+    const statusIndex = headerChildren.indexOf(
+      document.querySelector(".header-status")
+    );
+    const navIndex = headerChildren.indexOf(appNav);
+    const backButton = appNav.querySelector("[data-nav-back]");
+    const homeButton = appNav.querySelector("[data-nav-home]");
+    const forwardButton = appNav.querySelector("[data-nav-forward]");
+
+    assert.ok(navIndex > statusIndex);
+
+    assert.equal(backButton.getAttribute("aria-label"), "Back");
+    assert.equal(backButton.getAttribute("title"), "Back");
+    assert.equal(homeButton.getAttribute("aria-label"), "Home");
+    assert.equal(homeButton.getAttribute("title"), "Home");
+    assert.equal(forwardButton.getAttribute("aria-label"), "Forward");
+    assert.equal(forwardButton.getAttribute("title"), "Forward");
+
+    homeButton.click();
+
+    await waitFor(() => {
+      assert.deepEqual(navigations, ["/"]);
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke keeps home data visible with header navigation", async () => {
+  const harness = await bootstrapFrontendHarness({
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/containers/top-level": () =>
+        createJsonResponse(200, {
+          containers: [
+            {
+              id: 1,
+              name: "Garage Tote",
+              photoPath: null
+            }
+          ]
+        }),
+      "GET /api/items/top-level": () =>
+        createJsonResponse(200, {
+          items: [
+            {
+              id: 2,
+              name: "Packing Tape",
+              photoPath: null
+            }
+          ]
+        }),
+      "GET /api/recent-objects": () =>
+        createJsonResponse(200, {
+          recentObjects: [
+            {
+              name: "Garage Tote",
+              objectId: 1,
+              objectType: "container",
+              pathContext: "Garage Tote",
+              photoPath: null,
+              topLevel: true
+            }
+          ]
+        }),
+      "GET /api/inventory-overview": () =>
+        createJsonResponse(200, {
+          containers: [],
+          counts: {
+            containers: 3,
+            items: 5
+          },
+          items: [],
+          relationshipPaths: []
+        })
+    }
+  });
+
+  try {
+    const { document, window } = harness;
+    const navigations = [];
+
+    window.navigateTo = (path) => {
+      navigations.push(path);
+    };
+
+    await waitFor(() => {
+      assert.equal(document.querySelector("[data-home-sections]").hidden, false);
+      assert.equal(document.querySelector("[data-home-view]").hidden, false);
+      assert.equal(document.querySelector("[data-app-nav]").hidden, false);
+      assert.equal(
+        document.querySelector("[data-top-level-containers] .object-name").textContent,
+        "Garage Tote"
+      );
+      assert.equal(
+        document.querySelector("[data-top-level-items] .object-name").textContent,
+        "Packing Tape"
+      );
+      assert.equal(
+        document.querySelector("[data-recent-objects] .object-name").textContent,
+        "Garage Tote"
+      );
+      assert.equal(
+        document.querySelector("[data-inventory-container-count]").textContent,
+        "3"
+      );
+      assert.equal(
+        document.querySelector("[data-inventory-item-count]").textContent,
+        "5"
+      );
+    });
+
+    const recentPanel = document.querySelector("[data-recent-objects]").closest(".panel");
+    const statsPanel = document
+      .querySelector("[data-inventory-overview-link]")
+      .closest(".panel");
+    const homePanels = Array.from(
+      document.querySelector("[data-home-view]").children
+    );
+
+    assert.ok(homePanels.indexOf(statsPanel) > homePanels.indexOf(recentPanel));
+
+    document.querySelector("[data-inventory-overview-link]").click();
+
+    await waitFor(() => {
+      assert.deepEqual(navigations, ["/inventory-overview"]);
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke renders inventory overview panels and navigation", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/inventory-overview",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/inventory-overview": () =>
+        createJsonResponse(200, {
+          containers: [
+            {
+              fullPath: "Garage Tote",
+              id: 1,
+              name: "Garage Tote",
+              parentContainerId: null,
+              topLevel: true
+            },
+            {
+              fullPath: "Inner Bin > Garage Tote",
+              id: 2,
+              name: "Inner Bin",
+              path: [
+                {
+                  id: 2,
+                  name: "Inner Bin",
+                  objectType: "container"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ],
+              parentContainerId: 1,
+              topLevel: false
+            }
+          ],
+          counts: {
+            containers: 2,
+            items: 2
+          },
+          items: [
+            {
+              fullPath: "Loose Batteries",
+              id: 3,
+              name: "Loose Batteries",
+              parentContainerId: null,
+              topLevel: true
+            },
+            {
+              fullPath: "Screwdriver > Inner Bin > Garage Tote",
+              id: 4,
+              name: "Screwdriver",
+              path: [
+                {
+                  id: 4,
+                  name: "Screwdriver",
+                  objectType: "item"
+                },
+                {
+                  id: 2,
+                  name: "Inner Bin",
+                  objectType: "container"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ],
+              parentContainerId: 2,
+              topLevel: false
+            }
+          ],
+          relationshipPaths: [
+            {
+              objectId: 1,
+              objectType: "container",
+              path: "Top Level > Garage Tote",
+              pathSegments: [
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ]
+            },
+            {
+              objectId: 2,
+              objectType: "container",
+              path: "Top Level > Inner Bin > Garage Tote",
+              pathSegments: [
+                {
+                  id: 2,
+                  name: "Inner Bin",
+                  objectType: "container"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ]
+            },
+            {
+              objectId: 4,
+              objectType: "item",
+              path: "Top Level > Screwdriver > Inner Bin > Garage Tote",
+              pathSegments: [
+                {
+                  id: 4,
+                  name: "Screwdriver",
+                  objectType: "item"
+                },
+                {
+                  id: 2,
+                  name: "Inner Bin",
+                  objectType: "container"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ]
+            }
+          ]
+        })
+    }
+  });
+
+  try {
+    const { document, window } = harness;
+    const navigations = [];
+
+    window.navigateTo = (path) => {
+      navigations.push(path);
+    };
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-inventory-overview-page]").hidden,
+        false
+      );
+      assert.equal(
+        document.querySelectorAll("[data-inventory-overview-page] > .panel")
+          .length,
+        3
+      );
+      assert.match(
+        document.querySelector("[data-inventory-items]").textContent,
+        /Screwdriver/
+      );
+      assert.equal(
+        document.querySelector("[data-inventory-containers] .object-name").textContent,
+        "Garage Tote"
+      );
+      assert.match(
+        document.querySelector("[data-inventory-paths]").textContent,
+        /Top Level > Screwdriver > Inner Bin > Garage Tote/
+      );
+      assert.equal(
+        document
+          .querySelector('[data-inventory-paths] [href="/items/4"]')
+          .textContent,
+        "Screwdriver"
+      );
+    });
+
+    document
+      .querySelector('[data-inventory-items] [href="/items/4"]')
+      .dispatchEvent(
+        new window.MouseEvent("click", {
+          bubbles: true,
+          cancelable: true
+        })
+      );
+    document
+      .querySelector("[data-inventory-containers] [data-object-link]")
+      .dispatchEvent(
+        new window.MouseEvent("click", {
+          bubbles: true,
+          cancelable: true
+        })
+      );
+
+    assert.deepEqual(navigations, ["/items/4", "/containers/1"]);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke renders empty inventory overview states", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/inventory-overview",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        })
+    }
+  });
+
+  try {
+    const { document } = harness;
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-inventory-overview-page]").hidden,
+        false
+      );
+      assert.equal(document.querySelector("[data-inventory-items-empty]").hidden, false);
+      assert.equal(
+        document.querySelector("[data-inventory-containers-empty]").hidden,
+        false
+      );
+      assert.equal(document.querySelector("[data-inventory-paths-empty]").hidden, false);
+    });
   } finally {
     harness.cleanup();
   }
@@ -597,7 +1054,24 @@ test("frontend smoke covers mixed search results and result navigation", async (
               name: "Cable Charger",
               objectId: 2,
               objectType: "item",
-              pathContext: "Garage Tote > Shelf Bin > Cable Charger",
+              path: [
+                {
+                  id: 2,
+                  name: "Cable Charger",
+                  objectType: "item"
+                },
+                {
+                  id: 2,
+                  name: "Shelf Bin",
+                  objectType: "container"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ],
+              pathContext: "Cable Charger > Shelf Bin > Garage Tote",
               topLevel: false
             }
           ]
@@ -626,6 +1100,9 @@ test("frontend smoke covers mixed search results and result navigation", async (
       const searchLinks = Array.from(
         document.querySelectorAll("[data-search-results] [data-object-link]")
       );
+      const searchRows = Array.from(
+        document.querySelectorAll("[data-search-results] li")
+      );
 
       assert.equal(searchSection.hidden, false);
       assert.equal(document.querySelector("[data-search-summary]").textContent, "2 matches");
@@ -637,10 +1114,16 @@ test("frontend smoke covers mixed search results and result navigation", async (
         "Top level"
       );
       assert.equal(searchLinks[1].getAttribute("href"), "/items/2");
-      assert.equal(searchLinks[1].querySelector(".object-name").textContent, "Cable Charger");
+      assert.equal(searchLinks[1].textContent, "Cable Charger");
       assert.equal(
-        searchLinks[1].querySelector(".object-context").textContent,
-        "Garage Tote > Shelf Bin > Cable Charger"
+        searchRows[1].querySelector(".object-context").textContent,
+        "Cable Charger > Shelf Bin > Garage Tote"
+      );
+      assert.equal(
+        searchRows[1]
+          .querySelector('.object-context [href="/containers/1"]')
+          .textContent,
+        "Garage Tote"
       );
     });
 
@@ -795,7 +1278,7 @@ test("frontend smoke returns to signed-out state when search receives a 401", as
   }
 });
 
-test("frontend smoke covers the container delete UI flow for an empty container", async () => {
+test("frontend smoke covers the container delete UI flow for a top-level container", async () => {
   const harness = await bootstrapFrontendHarness({
     pathname: "/containers/1",
     routeHandlers: {
@@ -829,7 +1312,17 @@ test("frontend smoke covers the container delete UI flow for an empty container"
   });
 
   try {
-    const { document, requestLog } = harness;
+    const { document, requestLog, window } = harness;
+    const confirmations = [];
+    const navigations = [];
+
+    window.confirm = (message) => {
+      confirmations.push(message);
+      return true;
+    };
+    window.navigateTo = (path) => {
+      navigations.push(path);
+    };
 
     await waitFor(() => {
       assert.equal(document.querySelector("[data-container-page]").hidden, false);
@@ -847,6 +1340,96 @@ test("frontend smoke covers the container delete UI flow for an empty container"
         document.querySelector("[data-container-action-note]").textContent,
         "Deleting container..."
       );
+    });
+
+    assert.deepEqual(confirmations, [
+      'Delete "Garage Tote"? This will not delete its contents. Direct child items and containers will move up one level.'
+    ]);
+    await waitFor(() => {
+      assert.deepEqual(navigations, ["/"]);
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke navigates to parent after deleting a nested container", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/containers/2",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/containers/2": () =>
+        createJsonResponse(200, {
+          childContainers: [
+            {
+              id: 3,
+              name: "Small Parts",
+              parentContainerId: 2
+            }
+          ],
+          childItems: [
+            {
+              id: 4,
+              name: "Packing Tape",
+              parentContainerId: 2
+            }
+          ],
+          container: {
+            id: 2,
+            name: "Shelf Bin",
+            parentContainerId: 1,
+            photoPath: null,
+            qrCode: null
+          },
+          fullPath: "Garage Tote > Shelf Bin",
+          itemCount: 1,
+          subcontainerCount: 1
+        }),
+      "DELETE /api/containers/2": () =>
+        createJsonResponse(200, {
+          success: true
+        })
+    }
+  });
+
+  try {
+    const { document, requestLog, window } = harness;
+    const confirmations = [];
+    const navigations = [];
+
+    window.confirm = (message) => {
+      confirmations.push(message);
+      return true;
+    };
+    window.navigateTo = (path) => {
+      navigations.push(path);
+    };
+
+    await waitFor(() => {
+      assert.equal(document.querySelector("[data-container-page]").hidden, false);
+    });
+
+    document.querySelector("[data-container-delete]").click();
+
+    await waitFor(() => {
+      assert.equal(
+        requestLog.filter((request) => request.key === "DELETE /api/containers/2")
+          .length,
+        1
+      );
+    });
+
+    assert.deepEqual(confirmations, [
+      'Delete "Shelf Bin"? This will not delete its contents. Direct child items and containers will move up one level.'
+    ]);
+    await waitFor(() => {
+      assert.deepEqual(navigations, ["/containers/1"]);
     });
   } finally {
     harness.cleanup();

@@ -6,6 +6,7 @@ const {
   validateOwnedObject
 } = require("./validation");
 const { getContainerPathInfo } = require("./paths");
+const { deleteStoredPhotoIfPresent } = require("./photos");
 
 const containerSelectColumns = `
   id,
@@ -291,8 +292,41 @@ function moveContainer(database, containerId, userId, payload) {
 
 function deleteContainer(database, containerId, userId) {
   const container = validateContainerDeletion(database, containerId, userId);
+  const promoteAndDeleteContainer = database.transaction(() => {
+    database
+      .prepare(
+        `
+          UPDATE containers
+          SET
+            parentContainerId = ?,
+            updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          WHERE userId = ? AND parentContainerId = ?
+        `
+      )
+      .run(container.parentContainerId, userId, container.id);
 
-  database.prepare("DELETE FROM containers WHERE id = ?").run(container.id);
+    database
+      .prepare(
+        `
+          UPDATE items
+          SET
+            parentContainerId = ?,
+            updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          WHERE userId = ? AND parentContainerId = ?
+        `
+      )
+      .run(container.parentContainerId, userId, container.id);
+
+    database
+      .prepare("DELETE FROM containers WHERE id = ? AND userId = ?")
+      .run(container.id, userId);
+  });
+
+  promoteAndDeleteContainer();
+
+  if (container.photoPath) {
+    deleteStoredPhotoIfPresent(container.photoPath);
+  }
 
   return {
     success: true

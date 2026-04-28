@@ -85,6 +85,7 @@ test("recordRecentObjectOpen records container and item opens in most-recent-fir
         objectType: recentObject.objectType,
         objectId: recentObject.objectId,
         name: recentObject.name,
+        path: recentObject.path,
         pathContext: recentObject.pathContext,
         photoPath: recentObject.photoPath,
         photoUrl: recentObject.photoUrl,
@@ -95,7 +96,19 @@ test("recordRecentObjectOpen records container and item opens in most-recent-fir
           objectType: "item",
           objectId: 2,
           name: "Packing Tape",
-          pathContext: "Garage Tote > Packing Tape",
+          path: [
+            {
+              id: 2,
+              name: "Packing Tape",
+              objectType: "item"
+            },
+            {
+              id: 1,
+              name: "Garage Tote",
+              objectType: "container"
+            }
+          ],
+          pathContext: "Packing Tape > Garage Tote",
           photoPath: "item-2.jpg",
           photoUrl: "/api/photos/item/2?v=item-2.jpg",
           topLevel: false
@@ -104,6 +117,13 @@ test("recordRecentObjectOpen records container and item opens in most-recent-fir
           objectType: "container",
           objectId: 1,
           name: "Garage Tote",
+          path: [
+            {
+              id: 1,
+              name: "Garage Tote",
+              objectType: "container"
+            }
+          ],
           pathContext: "Top level",
           photoPath: "container-1.jpg",
           photoUrl: "/api/photos/container/1?v=container-1.jpg",
@@ -215,6 +235,13 @@ test("listRecentObjects removes stale and duplicate rows from older placeholder 
         objectType: "container",
         name: "Garage Tote",
         openedAt: "2026-01-01T00:00:03.000Z",
+        path: [
+          {
+            id: 1,
+            name: "Garage Tote",
+            objectType: "container"
+          }
+        ],
         pathContext: "Top level",
         photoPath: "container-1.jpg",
         photoUrl: "/api/photos/container/1?v=container-1.jpg",

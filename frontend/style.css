@@ -85,33 +85,34 @@ a {
   gap: 14px;
 }
 
-/* Navigation buttons placed at left and right edges of the header */
-.app-header {
-  position: relative;
+.app-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-items: center;
+  gap: 12px;
+  width: min(100%, 360px);
+  margin: 2px auto 0;
+  padding-top: 2px;
 }
 
 .nav-button {
-  position: absolute;
-  top: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-strong);
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  border: 1px solid rgba(31, 106, 80, 0.12);
+  background: rgba(31, 106, 80, 0.08);
   color: var(--accent-strong);
   font-weight: 700;
   font-size: 1.2rem;
 }
 
-.nav-back {
-  left: 12px;
-}
-
-.nav-forward {
-  right: 12px;
+.nav-home {
+  width: 72px;
+  padding: 0 12px;
+  font-size: 0.85rem;
 }
 
 .header-status {
@@ -397,6 +398,28 @@ select.text-input {
   gap: 10px;
 }
 
+.path-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.path-row {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(216, 203, 184, 0.65);
+  background: rgba(255, 253, 249, 0.72);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
 .object-row,
 .placeholder-card,
 .object-action-row {
@@ -460,6 +483,22 @@ select.text-input {
   word-break: break-word;
 }
 
+.object-name-link,
+.path-link {
+  color: var(--accent-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.object-name-link:hover,
+.path-link:hover {
+  text-decoration: underline;
+}
+
+.path-separator {
+  color: var(--muted);
+}
+
 .object-badge {
   flex-shrink: 0;
   padding: 6px 10px;
@@ -507,8 +546,8 @@ select.text-input {
     align-items: start;
   }
 
-  .nav-button {
-    top: 18px;
+  .app-nav {
+    grid-column: 1 / -1;
   }
 
   .header-status {

@@ -41,6 +41,7 @@ function formatRecentObject(database, recentObject, object) {
     objectType: recentObject.objectType,
     name: object.name,
     openedAt: recentObject.openedAt,
+    path: pathInfo.path,
     pathContext: pathInfo.topLevel ? "Top level" : pathInfo.fullPath,
     photoPath: object.photoPath,
     photoUrl,
