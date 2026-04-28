@@ -164,9 +164,9 @@ License
 
 ## License
 
-Copyright © 2026 Lawrence Dinh. All rights reserved.
+Copyright © 2026 Luat "Lawrence" Dinh. All rights reserved.
 
 This repository is provided for portfolio and review purposes only. No permission is granted to copy, modify, distribute, or use this code commercially without written permission.
 
-If you want a short runbook (backup/restore steps) or a user guide added to the repository, I can create one next.
+
 
