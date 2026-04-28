@@ -1,0 +1,20 @@
+{
+  "name": "containers-app-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Minimal backend scaffold for the personal inventory app.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test src/http.integration.test.js && node --test src/auth.test.js src/containers.test.js src/database.test.js src/frontend.smoke.test.js src/items.test.js src/paths.test.js src/photos.test.js src/qr.test.js src/recent-objects.test.js src/search.test.js src/validation.test.js",
+    "test:frontend-smoke": "node --test src/frontend.smoke.test.js",
+    "backup": "node src/backup-local.js",
+    "restore": "node src/restore-local.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0"
+  },
+  "devDependencies": {
+    "jsdom": "^29.0.2"
+  }
+}

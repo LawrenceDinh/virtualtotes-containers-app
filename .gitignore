@@ -1,0 +1,33 @@
+backend/.env
+data/*
+!data/.gitkeep
+photos/*
+!photos/.gitkeep
+*.sqlite
+*.log
+node_modules/
+backend/node_modules/
+.DS_Store
+
+# Local environment files
+.env
+*.env
+
+# Local DB and runtime data
+*.db
+*.sqlite3
+backups/
+
+# Editor and OS files
+.vscode/
+.idea/
+Thumbs.db
+*.swp
+coverage/
+logs/
+
+# Prevent committing internal agent/transcript docs and updates
+AGENTS.md
+updates/
+*prompt*.md
+

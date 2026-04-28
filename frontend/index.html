@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Personal Inventory App</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header panel">
+        <button class="nav-button nav-back" type="button" data-nav-back hidden aria-label="Back">‹</button>
+        <button class="nav-button nav-forward" type="button" data-nav-forward hidden aria-label="Forward">›</button>
+        <div class="header-copy">
+          <p class="eyebrow">Home Inventory</p>
+          <h1>Home Inventory</h1>
+          <p class="intro">
+            Find containers and items quickly, then jump into the main container
+            workflow.
+          </p>
+        </div>
+        <div class="header-status">
+          <p class="session-pill" data-session-status>Checking session...</p>
+          <button
+            class="secondary-button logout-button"
+            type="button"
+            data-logout-button
+            hidden
+          >
+            Log Out
+          </button>
+        </div>
+      </header>
+
+      <section class="panel stack" data-login-panel hidden>
+        <div class="section-heading auth-heading">
+          <div>
+            <p class="section-kicker">Login</p>
+            <h2>Sign In</h2>
+          </div>
+          <p class="section-summary">
+            Use your private home account to open the inventory.
+          </p>
+        </div>
+
+        <form class="login-form" data-login-form>
+          <label class="field-label" for="username-input">Username</label>
+          <input
+            id="username-input"
+            class="text-input"
+            name="username"
+            type="text"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+            data-username-input
+          >
+
+          <label class="field-label" for="password-input">Password</label>
+          <input
+            id="password-input"
+            class="text-input"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            data-password-input
+          >
+
+          <button class="primary-button" type="submit" data-login-button>
+            Log In
+          </button>
+
+          <p class="form-error" data-login-error hidden></p>
+        </form>
+      </section>
+
+      <div class="home-sections" data-home-sections hidden>
+        <div class="home-view" data-home-view>
+          <section class="panel stack">
+            <form class="search-form" data-search-form>
+              <label class="field-label" for="search-input">Search containers and items</label>
+              <div class="search-row">
+                <input
+                  id="search-input"
+                  class="text-input"
+                  name="query"
+                  type="search"
+                  placeholder="Search by object name"
+                  autocomplete="off"
+                  data-search-input
+                >
+                <button class="secondary-button" type="submit">Search</button>
+              </div>
+            </form>
+
+            <div class="entry-actions">
+              <button class="primary-button" type="button" data-scan-entry>
+                Scan QR
+              </button>
+              <button class="secondary-button" type="button" data-add-entry>
+                Add Object
+              </button>
+            </div>
+
+            <p class="helper-text" data-entry-note>
+              Scan a QR code to open a linked object, or add a new item or
+              container from here.
+            </p>
+          </section>
+
+          <section class="panel" data-search-section hidden>
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Search</p>
+                <h2>Results</h2>
+              </div>
+              <p class="section-summary" data-search-summary>
+                Search containers and items by name.
+              </p>
+            </div>
+
+            <ul class="object-list" data-search-results></ul>
+            <p class="empty-state" data-search-empty hidden>
+              No matching objects found.
+            </p>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Browse</p>
+                <h2>Top-Level Containers</h2>
+              </div>
+              <p class="section-summary" data-top-level-containers-summary>
+                Loading containers...
+              </p>
+            </div>
+
+            <ul class="object-list" data-top-level-containers></ul>
+            <p class="empty-state" data-top-level-containers-empty hidden>
+              No top-level containers yet.
+            </p>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Browse</p>
+                <h2>Top-Level Items</h2>
+              </div>
+              <p class="section-summary" data-top-level-items-summary>
+                Loading items...
+              </p>
+            </div>
+
+            <ul class="object-list" data-top-level-items></ul>
+            <p class="empty-state" data-top-level-items-empty hidden>
+              No top-level items yet.
+            </p>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Recent</p>
+                <h2>Recent Objects</h2>
+              </div>
+              <p class="section-summary" data-recent-summary>
+                Loading recent objects...
+              </p>
+            </div>
+
+            <ul class="object-list" data-recent-objects></ul>
+            <p class="empty-state" data-recent-empty hidden>
+              Open a container or item to see it here.
+            </p>
+          </section>
+        </div>
+
+        <section class="panel detail-page" data-scan-page hidden>
+          <div class="detail-header">
+            <a class="back-link" href="/" data-scan-back-link>Back to Home</a>
+            <p class="section-kicker">Scan QR</p>
+            <h2>Scan a Code</h2>
+            <p class="section-summary" data-scan-summary>
+              Point your phone camera at a QR code to open an item or container.
+            </p>
+          </div>
+
+          <section class="detail-card detail-card-wide">
+            <div class="scan-preview">
+              <video class="scan-video" data-scan-video playsinline muted autoplay></video>
+            </div>
+            <p class="helper-text" data-scan-status>
+              Starting camera...
+            </p>
+            <button class="secondary-button" type="button" data-scan-retry>
+              Retry Camera
+            </button>
+          </section>
+
+          <form class="object-form" data-scan-manual-form>
+            <label class="field-label" for="scan-manual-input">Enter QR code manually</label>
+            <div class="search-row">
+              <input
+                id="scan-manual-input"
+                class="text-input"
+                name="qrCode"
+                type="text"
+                autocomplete="off"
+                autocapitalize="none"
+                spellcheck="false"
+                placeholder="Paste or type the code"
+                data-scan-manual-input
+              >
+              <button class="secondary-button" type="submit" data-scan-manual-submit>
+                Open
+              </button>
+            </div>
+            <p class="helper-text">
+              Manual entry stays available if camera access is blocked or your browser
+              cannot scan QR codes directly.
+            </p>
+            <p class="form-error" data-scan-error hidden></p>
+          </form>
+        </section>
+
+        <section class="panel detail-page" data-unknown-qr-page hidden>
+          <div class="detail-header">
+            <a class="back-link" href="/scan" data-unknown-qr-back-link>Back to Scan</a>
+            <p class="section-kicker">Unknown QR</p>
+            <h2 data-unknown-qr-title>QR Not Linked Yet</h2>
+            <p class="section-summary" data-unknown-qr-summary>
+              This code is not linked to an item or container yet.
+            </p>
+          </div>
+
+          <section class="detail-card">
+            <p class="detail-label">Scanned Code</p>
+            <p class="detail-value qr-code-value" data-unknown-qr-code></p>
+          </section>
+
+          <section class="detail-section">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Create</p>
+                <h3>New Object</h3>
+              </div>
+              <p class="section-summary">
+                Start a new object and keep this QR attached from the beginning.
+              </p>
+            </div>
+
+            <div class="action-grid">
+              <button
+                class="primary-button"
+                type="button"
+                data-unknown-qr-create-container
+              >
+                Create Container
+              </button>
+              <button
+                class="secondary-button"
+                type="button"
+                data-unknown-qr-create-item
+              >
+                Create Item
+              </button>
+            </div>
+          </section>
+
+          <section class="detail-section">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Link</p>
+                <h3>Existing Object</h3>
+              </div>
+              <p class="section-summary">
+                Search for an existing item or container, then link this QR to it.
+              </p>
+            </div>
+
+            <form class="object-form" data-unknown-qr-search-form>
+              <label class="field-label" for="unknown-qr-search-input">
+                Search items and containers
+              </label>
+              <div class="search-row">
+                <input
+                  id="unknown-qr-search-input"
+                  class="text-input"
+                  name="query"
+                  type="search"
+                  autocomplete="off"
+                  placeholder="Search by object name"
+                  data-unknown-qr-search-input
+                >
+                <button
+                  class="secondary-button"
+                  type="submit"
+                  data-unknown-qr-search-submit
+                >
+                  Search
+                </button>
+              </div>
+            </form>
+
+            <p class="helper-text" data-unknown-qr-link-note>
+              Search for the object you want to link to this QR code.
+            </p>
+            <p class="form-error" data-unknown-qr-error hidden></p>
+            <ul class="object-list" data-unknown-qr-results></ul>
+            <p class="empty-state" data-unknown-qr-empty hidden>
+              No matching objects found.
+            </p>
+          </section>
+        </section>
+
+        <section class="panel detail-page" data-object-form-page hidden>
+          <div class="detail-header">
+            <a class="back-link" href="/" data-object-form-back-link>Back</a>
+            <p class="section-kicker" data-object-form-kicker>Object Form</p>
+            <h2 data-object-form-title>Loading form...</h2>
+            <p class="section-summary" data-object-form-summary>
+              Loading form details...
+            </p>
+          </div>
+
+          <form class="object-form" data-object-form>
+            <fieldset class="type-toggle" data-object-type-fieldset hidden>
+              <legend class="field-label">Object Type</legend>
+              <label class="type-option">
+                <input
+                  type="radio"
+                  name="objectType"
+                  value="item"
+                  data-object-type-input
+                >
+                <span>Item</span>
+              </label>
+              <label class="type-option">
+                <input
+                  type="radio"
+                  name="objectType"
+                  value="container"
+                  data-object-type-input
+                >
+                <span>Container</span>
+              </label>
+            </fieldset>
+
+            <label class="field-label" for="object-name-input">Name</label>
+            <input
+              id="object-name-input"
+              class="text-input"
+              name="name"
+              type="text"
+              autocomplete="off"
+              data-object-name-input
+            >
+
+            <label class="field-label" for="parent-container-select">Location</label>
+            <select
+              id="parent-container-select"
+              class="text-input"
+              name="parentContainerId"
+              data-parent-container-select
+            >
+              <option value="">Top Level</option>
+            </select>
+
+            <section class="detail-card" data-object-form-qr-panel hidden>
+              <p class="detail-label" data-object-form-qr-label>QR</p>
+              <p class="detail-value" data-object-form-qr-status>
+                No QR linked yet.
+              </p>
+              <p
+                class="detail-value qr-code-value"
+                data-object-form-qr-value
+                hidden
+              ></p>
+              <label
+                class="field-label"
+                for="object-form-qr-input"
+                data-object-form-qr-input-label
+                hidden
+              >
+                QR Code
+              </label>
+              <input
+                id="object-form-qr-input"
+                class="text-input"
+                name="qrCode"
+                type="text"
+                autocomplete="off"
+                autocapitalize="none"
+                spellcheck="false"
+                placeholder="Enter a QR code"
+                data-object-form-qr-input
+                hidden
+              >
+              <p class="helper-text" data-object-form-qr-note hidden>
+                Link or replace the QR code for this object.
+              </p>
+              <div class="form-actions qr-actions" data-object-form-qr-actions hidden>
+                <button
+                  class="secondary-button"
+                  type="button"
+                  data-object-form-qr-submit
+                >
+                  Link QR
+                </button>
+                <button
+                  class="danger-button"
+                  type="button"
+                  data-object-form-qr-remove
+                >
+                  Remove QR
+                </button>
+              </div>
+            </section>
+
+            <section class="detail-card">
+              <p class="detail-label">Photo</p>
+              <div class="photo-card">
+                <img
+                  class="photo-preview"
+                  alt=""
+                  data-object-form-photo-image
+                  hidden
+                >
+                <p class="detail-value" data-object-form-photo-status>
+                  Save this object first to add a photo.
+                </p>
+              </div>
+              <input
+                class="file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                data-object-form-photo-input
+              >
+              <div class="form-actions">
+                <button
+                  class="secondary-button"
+                  type="button"
+                  data-object-form-photo-pick
+                >
+                  Attach Photo
+                </button>
+                <button
+                  class="danger-button"
+                  type="button"
+                  data-object-form-photo-remove
+                >
+                  Remove Photo
+                </button>
+              </div>
+            </section>
+
+            <p class="helper-text" data-object-form-note>
+              Choose a name and location, then save. QR and photo controls are
+              available where supported in this flow.
+            </p>
+
+            <p class="form-error" data-object-form-error hidden></p>
+
+            <div class="form-actions">
+              <button class="primary-button" type="submit" data-object-form-submit>
+                Save
+              </button>
+              <button
+                class="secondary-button"
+                type="button"
+                data-object-form-cancel
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel detail-page" data-item-move-page hidden>
+          <div class="detail-header">
+            <a class="back-link" href="/" data-item-move-back-link>Back</a>
+            <p class="section-kicker">Move Item</p>
+            <h2 data-item-move-title>Loading move flow...</h2>
+            <p class="section-summary" data-item-move-summary>
+              Loading item details...
+            </p>
+          </div>
+
+          <form class="object-form" data-item-move-form>
+            <section class="detail-card">
+              <p class="detail-label">Current Location</p>
+              <p class="detail-value" data-item-move-current-location>
+                Loading current location...
+              </p>
+            </section>
+
+            <label class="field-label" for="item-move-destination-select">
+              Destination
+            </label>
+            <select
+              id="item-move-destination-select"
+              class="text-input"
+              name="parentContainerId"
+              data-item-move-destination-select
+            >
+              <option value="">Top Level</option>
+            </select>
+
+            <p class="helper-text" data-item-move-note>
+              Choose a container or move the item back to Top Level.
+            </p>
+
+            <p class="form-error" data-item-move-error hidden></p>
+
+            <div class="form-actions">
+              <button class="primary-button" type="submit" data-item-move-submit>
+                Move Item
+              </button>
+              <button
+                class="secondary-button"
+                type="button"
+                data-item-move-cancel
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel detail-page" data-container-move-page hidden>
+          <div class="detail-header">
+            <a class="back-link" href="/" data-container-move-back-link>Back</a>
+            <p class="section-kicker">Move Container</p>
+            <h2 data-container-move-title>Loading move flow...</h2>
+            <p class="section-summary" data-container-move-summary>
+              Loading container details...
+            </p>
+          </div>
+
+          <form class="object-form" data-container-move-form>
+            <section class="detail-card">
+              <p class="detail-label">Current Location</p>
+              <p class="detail-value" data-container-move-current-location>
+                Loading current location...
+              </p>
+            </section>
+
+            <label class="field-label" for="container-move-destination-select">
+              Destination
+            </label>
+            <select
+              id="container-move-destination-select"
+              class="text-input"
+              name="parentContainerId"
+              data-container-move-destination-select
+            >
+              <option value="">Top Level</option>
+            </select>
+
+            <p class="helper-text" data-container-move-note>
+              Choose another container or move this container back to Top Level.
+            </p>
+
+            <p class="form-error" data-container-move-error hidden></p>
+
+            <div class="form-actions">
+              <button
+                class="primary-button"
+                type="submit"
+                data-container-move-submit
+              >
+                Move Container
+              </button>
+              <button
+                class="secondary-button"
+                type="button"
+                data-container-move-cancel
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel detail-page" data-container-page hidden>
+          <div class="detail-header">
+            <a class="back-link" href="/">Back to Home</a>
+            <p class="section-kicker">Container</p>
+            <h2 data-container-page-name>Loading container...</h2>
+            <p class="section-summary" data-container-page-summary>
+              Loading container details...
+            </p>
+          </div>
+
+          <div class="detail-grid">
+            <section class="detail-card detail-card-photo">
+              <p class="detail-label">Photo</p>
+              <div class="photo-card">
+                <img
+                  class="photo-preview"
+                  alt=""
+                  data-container-photo-image
+                  hidden
+                >
+                <p class="detail-value" data-container-photo-status>
+                  No photo added yet.
+                </p>
+              </div>
+              <input
+                class="file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                data-container-photo-input
+              >
+              <div class="form-actions">
+                <button
+                  class="secondary-button"
+                  type="button"
+                  data-container-photo-pick
+                >
+                  Attach Photo
+                </button>
+                <button
+                  class="danger-button"
+                  type="button"
+                  data-container-photo-remove
+                >
+                  Remove Photo
+                </button>
+              </div>
+            </section>
+
+            <section class="detail-card">
+              <p class="detail-label">QR Status</p>
+              <p class="detail-value" data-container-qr-status>
+                No QR linked yet.
+              </p>
+            </section>
+
+            <section class="detail-card detail-card-wide">
+              <p class="detail-label">Full Path</p>
+              <p class="detail-value" data-container-full-path>
+                Loading path...
+              </p>
+            </section>
+          </div>
+
+          <div class="count-grid">
+            <article class="count-card">
+              <p class="count-label">Items</p>
+              <p class="count-value" data-container-item-count>0</p>
+            </article>
+            <article class="count-card">
+              <p class="count-label">Subcontainers</p>
+              <p class="count-value" data-container-subcontainer-count>0</p>
+            </article>
+          </div>
+
+          <section class="detail-section">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Children</p>
+                <h3>Child Containers</h3>
+              </div>
+              <p class="section-summary" data-container-children-summary>
+                Loading child containers...
+              </p>
+            </div>
+
+            <ul class="object-list" data-container-child-containers></ul>
+            <p class="empty-state" data-container-child-containers-empty hidden>
+              No child containers yet.
+            </p>
+          </section>
+
+          <section class="detail-section">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Children</p>
+                <h3>Child Items</h3>
+              </div>
+              <p class="section-summary" data-container-items-summary>
+                Loading child items...
+              </p>
+            </div>
+
+            <ul class="object-list" data-container-child-items></ul>
+            <p class="empty-state" data-container-child-items-empty hidden>
+              No child items yet.
+            </p>
+          </section>
+
+          <section class="detail-section">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Actions</p>
+                <h3>Container Actions</h3>
+              </div>
+              <p class="section-summary">
+                Keep managing this container from here.
+              </p>
+            </div>
+
+            <div class="action-grid">
+              <button class="primary-button" type="button" data-container-add-item>
+                Add Item
+              </button>
+              <button class="secondary-button" type="button" data-container-add-container>
+                Add Container
+              </button>
+              <button class="secondary-button" type="button" data-container-edit>
+                Edit Container
+              </button>
+              <button class="secondary-button" type="button" data-container-move>
+                Move Container
+              </button>
+              <button class="danger-button" type="button" data-container-delete>
+                Delete Container
+              </button>
+            </div>
+
+            <p class="helper-text" data-container-action-note>
+              Create, edit, move, and delete container flows are reserved for the next steps.
+            </p>
+          </section>
+        </section>
+
+        <section class="panel detail-page" data-item-page hidden>
+          <div class="detail-header">
+            <a class="back-link" href="/">Back to Home</a>
+            <p class="section-kicker">Item</p>
+            <h2 data-item-page-name>Loading item...</h2>
+            <p class="section-summary" data-item-page-summary>
+              Loading item details...
+            </p>
+          </div>
+
+          <div class="detail-grid">
+            <section class="detail-card detail-card-photo">
+              <p class="detail-label">Photo</p>
+              <div class="photo-card">
+                <img
+                  class="photo-preview"
+                  alt=""
+                  data-item-photo-image
+                  hidden
+                >
+                <p class="detail-value" data-item-photo-status>
+                  No photo added yet.
+                </p>
+              </div>
+              <input
+                class="file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                data-item-photo-input
+              >
+              <div class="form-actions">
+                <button
+                  class="secondary-button"
+                  type="button"
+                  data-item-photo-pick
+                >
+                  Attach Photo
+                </button>
+                <button
+                  class="danger-button"
+                  type="button"
+                  data-item-photo-remove
+                >
+                  Remove Photo
+                </button>
+              </div>
+            </section>
+
+            <section class="detail-card">
+              <p class="detail-label">QR Status</p>
+              <p class="detail-value" data-item-qr-status>
+                No QR linked yet.
+              </p>
+            </section>
+
+            <section class="detail-card detail-card-wide">
+              <p class="detail-label">Location</p>
+              <p class="detail-value" data-item-location-status>
+                Loading location...
+              </p>
+            </section>
+          </div>
+
+          <section class="detail-section">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Actions</p>
+                <h3>Item Actions</h3>
+              </div>
+              <p class="section-summary">
+                Inspect this item and use the available phase-1 actions.
+              </p>
+            </div>
+
+            <div class="action-grid">
+              <button class="secondary-button" type="button" data-item-edit>
+                Edit Item
+              </button>
+              <button class="secondary-button" type="button" data-item-move>
+                Move Item
+              </button>
+              <button class="danger-button" type="button" data-item-delete>
+                Delete Item
+              </button>
+            </div>
+
+            <p class="helper-text" data-item-action-note>
+              Edit and move item flows are reserved for the next steps.
+            </p>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <template id="object-row-template">
+      <li>
+        <a class="object-row" href="/" data-object-link>
+          <div class="object-copy">
+            <p class="object-name"></p>
+            <p class="object-context"></p>
+          </div>
+          <span class="object-badge"></span>
+        </a>
+      </li>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
