@@ -40,6 +40,25 @@ Open your browser to:
 
 		http://localhost:3000
 
+Inventory overview
+------------------
+
+- Objects: the app manages two primary object types: **containers** and **items**. Containers may contain items and other containers; items cannot contain anything.
+- Data model: each object stores standard metadata: `id`, `userId`, `name`, `photoPath`, `qrCode`, `parentContainerId`, `createdAt`, and `updatedAt`.
+- Top-level vs nested: both containers and items can exist at the top level (no parent) or nested under a container. The UI shows a `fullPath` for nested objects to make location clear.
+- Recent objects: the backend records recently opened objects and the main view surfaces them for quick access.
+- Photos: photos are stored on disk (paths stored in the DB) and served via authenticated API endpoints; photo files are not embedded in the database.
+- QR workflow: a QR code maps to exactly one object; scanning an unknown QR opens a create-or-link flow so you can onboard physical items quickly.
+- Move behavior: items can be moved to/from top-level and between containers. Container moves are validated to prevent circular nesting.
+
+Container delete behavior
+-------------------------
+
+- Deleting a container does **not** recursively delete its descendants. Instead, direct child containers and items are promoted to the deleted container's parent (or become top-level if the deleted container was top-level). Grandchildren remain nested under their existing parents.
+- The operation is executed inside a single database transaction to avoid partial states.
+- When a container is deleted the container row is removed, and the container's photo file (if present) is deleted from storage. The QR link for the deleted container is also removed.
+- Practical effect: deleting a container keeps its contents accessible but restructures them one level up — use this action with care if you expect to remove many objects.
+
 Testing
 -------
 - Run the full test sequence from the `backend` folder:
