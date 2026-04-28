@@ -1,55 +1,56 @@
-# VirtualTotes — Prototype Containers App
+# VirtualTotes
 
-Self-hosted personal inventory prototype (containers + items) designed for private LAN use and rapid local development.
+VirtualTotes helps you organize, locate, and manage physical containers and the items they hold using QR codes and a simple web interface.
 
-**Contents**
-- **Backend:** [backend/package.json](backend/package.json) and [backend/src/server.js](backend/src/server.js) (Node.js API, services, tests).
-- **Frontend:** [frontend/index.html](frontend/index.html) and [frontend/app.js](frontend/app.js) (vanilla JS single-page app).
+Why VirtualTotes
+- Organize: group items into named containers and nested containers.
+- Find quickly: scan a QR code or search by name to open an item or container.
+- Track movements: move items between containers and keep visual context with photos.
 
-**Quick Start**
-- **Requirements:** Node.js 18+ and npm.
-- **Install & test:**
+Key features
+- QR scanning and manual QR entry to open or link objects.
+- Create, edit, and nest containers; create and edit items.
+- Item relocation (top-level ⇄ container, container → container).
+- Global search and recent-items view for fast lookup.
+- Optional photo attachments to help visually identify objects.
+
+How it works (user perspective)
+1. Scan: scan a container or item QR code with your phone or use manual entry.
+2. View: the app opens the relevant page showing contents, photos, and the object's path.
+3. Update: add or edit names, photos, and QR links on the object page.
+4. Move: choose a destination container to relocate the item or container.
+5. Find: use search or the recent-items panel to locate things you need.
+
+- **Open the app:** visit `http://localhost:3000` in your browser after the server starts.
+
+Getting started (local)
+- Requirements: Node.js 18+.
+- Quick start:
 
 ```bash
 cd backend
 npm install
-npm test
-# start the server (defaults to http://0.0.0.0:3000)
 npm start
 ```
 
-- **Open the app:** visit `http://localhost:3000` in your browser after the server starts.
+- Open your browser at `http://localhost:3000` and sign in to begin using the app.
 
-**Development Workflows**
-- **Run a single test file:** `node --test src/http.integration.test.js` (useful when `npm test` behaves differently).
-- **Run frontend smoke checks:** `npm run test:frontend-smoke` from `backend`.
-- **Lint / formatting:** this prototype does not enforce a specific formatter or linter by default.
+Security & privacy
+- Data and photos are stored locally on the host machine; do not expose the server to the public internet without reviewing security settings.
+- Configure a strong session secret before deploying outside a trusted LAN.
 
-**Key Files & Services**
-- **Server entry:** [backend/src/server.js](backend/src/server.js) — HTTP routing, body parsing, and route dispatch.
-- **Authentication:** [backend/src/auth.js](backend/src/auth.js) — password hashing, session cookie handling.
-- **Photos:** [backend/src/photos.js](backend/src/photos.js) — validate/store/serve photos (private API route).
-- **Recent objects:** [backend/src/recent-objects.js](backend/src/recent-objects.js) — track recent opens for the home view.
-- **Frontend controller:** [frontend/app.js](frontend/app.js) — routing, views, and client-side interactions.
+Tech stack (high level)
+- Node.js backend with a small HTTP API
+- SQLite for local storage
+- Vanilla JavaScript single-page frontend (no cloud required)
 
-**Architecture Overview**
-- **Storage:** SQLite database at `./data/inventory.sqlite` (configurable via `DATABASE_PATH`). Photo files stored under `./photos` (see `PHOTO_PATH`).
-- **Object model:** Containers and items are separate tables; only containers may contain other objects. See `backend/src/schema.sql` for schema.
-- **Private photo serving:** Photos are not served from a public directory; they are fetched via `GET /api/photos/:objectType/:id` and require authentication.
+Support
+- For issues or feature requests, open an issue in the repository: https://github.com/LawrenceDinh/prototype-containers-app
 
-**Security & Operational Notes**
-- **Do not expose to the public internet:** This app is intended for private LAN use only.
-- **Session secret:** Change the default `SESSION_SECRET` before real deployment (set via `backend/.env` or environment variable `SESSION_SECRET`).
-- **Passwords:** Passwords are stored hashed (see `backend/src/auth.js`).
-- **Files excluded:** Photo binaries, backups, and local DB files are intentionally ignored by `.gitignore`.
+License
+- Add a license to the repository if you plan to publish or redistribute the project.
 
-**What Was Committed / What Was Excluded**
-- **Committed (examples):** backend source and tests, frontend static files, `package.json`, `.gitignore`, and this `README.md`.
-- **Excluded (intentionally):** `AGENTS.md`, `updates/*` (notes/transcripts), `data/`, `photos/`, `backups/`, `.env`, and `node_modules/`.
-
-**Testing & Troubleshooting**
-- If `npm test` fails on your machine, try running the failing file directly with `node --test <file>` to get a clearer failure trace.
-- The codebase includes unit tests, HTTP integration tests, and a jsdom-based frontend smoke test. Use these to validate behavior after local changes.
+For a short runbook (backup/restore steps) or a user guide, I can add a focused document on request.
 
 **Contribution & Support**
 - This project is a personal Phase-1 prototype. If you want help with a specific change (tests, a bugfix, or a small feature), open an issue or ask for a focused patch.
