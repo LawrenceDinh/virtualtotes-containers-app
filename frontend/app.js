@@ -18,6 +18,28 @@ const ui = {
     "[data-container-children-summary]"
   ),
   containerDeleteButton: document.querySelector("[data-container-delete]"),
+  containerDeleteAllDestinationField: document.querySelector(
+    "[data-container-delete-all-destination-field]"
+  ),
+  containerDeleteCancelButton: document.querySelector(
+    "[data-container-delete-cancel]"
+  ),
+  containerDeleteChildListNode: document.querySelector(
+    "[data-container-delete-child-list]"
+  ),
+  containerDeleteConfirmButton: document.querySelector(
+    "[data-container-delete-confirm]"
+  ),
+  containerDeleteCustomListNode: document.querySelector(
+    "[data-container-delete-custom-list]"
+  ),
+  containerDeleteDestinationSelect: document.querySelector(
+    "[data-container-delete-destination-select]"
+  ),
+  containerDeleteModeButtons: Array.from(
+    document.querySelectorAll("[data-container-delete-mode]")
+  ),
+  containerDeletePanel: document.querySelector("[data-container-delete-panel]"),
   containerEditButton: document.querySelector("[data-container-edit]"),
   containerEmptyNode: document.querySelector("[data-top-level-containers-empty]"),
   containerFullPathNode: document.querySelector("[data-container-full-path]"),
@@ -75,6 +97,12 @@ const ui = {
     "[data-inventory-containers-summary]"
   ),
   inventoryItemCountNode: document.querySelector("[data-inventory-item-count]"),
+  inventoryItemPathsEmptyNode: document.querySelector(
+    "[data-inventory-item-paths-empty]"
+  ),
+  inventoryItemPathsListNode: document.querySelector(
+    "[data-inventory-item-paths]"
+  ),
   inventoryItemsEmptyNode: document.querySelector("[data-inventory-items-empty]"),
   inventoryItemsListNode: document.querySelector("[data-inventory-items]"),
   inventoryItemsSummaryNode: document.querySelector(
@@ -85,8 +113,12 @@ const ui = {
   inventoryOverviewSummaryNode: document.querySelector(
     "[data-inventory-overview-summary]"
   ),
-  inventoryPathsEmptyNode: document.querySelector("[data-inventory-paths-empty]"),
-  inventoryPathsListNode: document.querySelector("[data-inventory-paths]"),
+  inventoryContainerPathsEmptyNode: document.querySelector(
+    "[data-inventory-container-paths-empty]"
+  ),
+  inventoryContainerPathsListNode: document.querySelector(
+    "[data-inventory-container-paths]"
+  ),
   inventoryPathsSummaryNode: document.querySelector(
     "[data-inventory-paths-summary]"
   ),
@@ -177,6 +209,7 @@ const ui = {
   recentEmptyNode: document.querySelector("[data-recent-empty]"),
   recentListNode: document.querySelector("[data-recent-objects]"),
   recentSummaryNode: document.querySelector("[data-recent-summary]"),
+  recentToggleButton: document.querySelector("[data-recent-toggle]"),
   rowTemplate: document.querySelector("#object-row-template"),
   scanEntryButton: document.querySelector("[data-scan-entry]"),
   scanBackLink: document.querySelector("[data-scan-back-link]"),
@@ -223,12 +256,18 @@ const ui = {
 };
 
 let currentContainerDetail = null;
+let currentContainerDeleteState = null;
 let currentContainerMoveState = null;
 let currentItemDetail = null;
 let currentItemMoveState = null;
 let currentObjectFormState = null;
+let currentObjectFormPhotoPreviewUrl = null;
 let currentQrScanState = null;
+let currentRecentActivityObjects = [];
+let currentRecentActivityExpanded = false;
 let currentUnknownQrState = null;
+
+const RECENT_ACTIVITY_COLLAPSED_LIMIT = 5;
 
 function createRequestError(status, message) {
   const error = new Error(message);
@@ -297,11 +336,40 @@ function buildEditPath(objectType, objectId) {
 }
 
 function getRecentObjectContext(recentObject) {
-  if (recentObject.topLevel) {
-    return "Top level";
+  const contextParts = [];
+
+  if (recentObject.actionType === "moved") {
+    contextParts.push(
+      `${recentObject.fromLocation || "Unknown location"} → ${recentObject.toLocation || "Unknown location"}`
+    );
+  } else if (recentObject.toLocation) {
+    contextParts.push(`In ${recentObject.toLocation}`);
+  } else if (recentObject.fromLocation) {
+    contextParts.push(`Was in ${recentObject.fromLocation}`);
   }
 
-  return recentObject.pathContext || "Location unavailable";
+  const activityTime = recentObject.occurredAt || recentObject.openedAt;
+
+  if (!activityTime) {
+    contextParts.push("Recent activity");
+    return contextParts.join(" • ");
+  }
+
+  const openedAt = new Date(activityTime);
+
+  if (Number.isNaN(openedAt.getTime())) {
+    contextParts.push("Recent activity");
+    return contextParts.join(" • ");
+  }
+
+  contextParts.push(
+    openedAt.toLocaleString(undefined, {
+      dateStyle: "short",
+      timeStyle: "short"
+    })
+  );
+
+  return contextParts.join(" • ");
 }
 
 function buildPathSegmentHref(segment) {
@@ -328,8 +396,47 @@ function renderPathLinks(targetNode, pathSegments, fallbackText) {
     linkNode.className = "path-link";
     linkNode.href = buildPathSegmentHref(segment);
     linkNode.dataset.pathLink = "";
-    linkNode.textContent = segment.name;
+
+    const thumbnailNode = document.createElement("span");
+    thumbnailNode.className = `path-segment-thumbnail path-segment-thumbnail-${segment.objectType}`;
+    thumbnailNode.dataset.pathSegmentIcon = segment.objectType;
+    thumbnailNode.setAttribute("aria-hidden", "true");
+
+    const thumbnailUrl = buildPhotoUrl(
+      segment.objectType,
+      segment.id,
+      segment.photoPath
+    );
+
+    if (thumbnailUrl) {
+      const imageNode = document.createElement("img");
+      imageNode.alt = "";
+      imageNode.loading = "lazy";
+      imageNode.src = thumbnailUrl;
+      thumbnailNode.append(imageNode);
+    }
+
+    const labelNode = document.createElement("span");
+    labelNode.textContent = segment.name;
+
+    linkNode.append(thumbnailNode, labelNode);
     targetNode.append(linkNode);
+  });
+}
+
+function renderPathRows(targetNode, relationshipPaths, fallbackText) {
+  targetNode.replaceChildren();
+
+  if (!Array.isArray(relationshipPaths) || relationshipPaths.length === 0) {
+    renderPathLinks(targetNode, null, fallbackText);
+    return;
+  }
+
+  relationshipPaths.forEach((relationshipPath) => {
+    const rowNode = document.createElement("span");
+    rowNode.className = "detail-path-row";
+    renderPathLinks(rowNode, relationshipPath.path, relationshipPath.fullPath);
+    targetNode.append(rowNode);
   });
 }
 
@@ -339,6 +446,7 @@ function createObjectRow({
   href,
   name,
   pathSegments = null,
+  showContext = true,
   thumbnailAlt = "",
   thumbnailPlaceholder = "",
   thumbnailUrl = null
@@ -349,7 +457,14 @@ function createObjectRow({
   const nameNode = row.querySelector(".object-name");
   const contextNode = row.querySelector(".object-context");
 
-  link.href = href;
+  if (href) {
+    link.href = href;
+  } else {
+    const rowNode = document.createElement("div");
+    rowNode.className = `${link.className} object-row-inactive`;
+    link.replaceWith(rowNode);
+    rowNode.append(...Array.from(link.childNodes));
+  }
 
   if (Array.isArray(pathSegments) && pathSegments.length > 0) {
     const rowNode = document.createElement("div");
@@ -394,16 +509,24 @@ function createObjectRow({
     contextNode.textContent = context;
   }
 
+  contextNode.hidden = !showContext;
   objectCopyNode.hidden = false;
   row.querySelector(".object-badge").textContent = badge;
 
   return row;
 }
 
-function buildThumbnailOptions(objectType, objectId, name, photoPath, photoUrl = null) {
+function buildThumbnailOptions(
+  objectType,
+  objectId,
+  name,
+  photoPath,
+  photoUrl = null,
+  placeholder = "No photo"
+) {
   return {
     thumbnailAlt: `${name} photo`,
-    thumbnailPlaceholder: "No photo",
+    thumbnailPlaceholder: placeholder,
     thumbnailUrl: photoUrl || buildPhotoUrl(objectType, objectId, photoPath)
   };
 }
@@ -419,6 +542,13 @@ function renderObjectList(listNode, emptyNode, rows, emptyMessage) {
 
 function updateCountSummary(summaryNode, count, singularLabel, pluralLabel) {
   summaryNode.textContent = formatCount(count, singularLabel, pluralLabel);
+}
+
+function clearObjectFormPhotoPreviewUrl() {
+  if (currentObjectFormPhotoPreviewUrl) {
+    URL.revokeObjectURL(currentObjectFormPhotoPreviewUrl);
+    currentObjectFormPhotoPreviewUrl = null;
+  }
 }
 
 function getCurrentRoute() {
@@ -603,7 +733,12 @@ function resetHomeData() {
     "Scan a QR code to open a linked object, or add a new item or container from here.";
   ui.containerSummaryNode.textContent = "Loading containers...";
   ui.itemSummaryNode.textContent = "Loading items...";
-  ui.recentSummaryNode.textContent = "Loading recent objects...";
+  ui.recentSummaryNode.textContent = "Loading recent activity...";
+  ui.recentToggleButton.hidden = true;
+  ui.recentToggleButton.textContent = "Show more";
+  ui.recentListNode.classList.remove("recent-activity-list-expanded");
+  currentRecentActivityExpanded = false;
+  currentRecentActivityObjects = [];
   ui.inventoryStatsSummaryNode.textContent = "Loading inventory stats...";
   ui.inventoryContainerCountNode.textContent = "0";
   ui.inventoryItemCountNode.textContent = "0";
@@ -645,7 +780,18 @@ function resetInventoryOverviewPage() {
     [],
     "No containers yet."
   );
-  renderPathList([], "No paths yet.");
+  renderPathList(
+    ui.inventoryItemPathsListNode,
+    ui.inventoryItemPathsEmptyNode,
+    [],
+    "No item paths yet."
+  );
+  renderPathList(
+    ui.inventoryContainerPathsListNode,
+    ui.inventoryContainerPathsEmptyNode,
+    [],
+    "No container paths yet."
+  );
 }
 
 function resetScanPage() {
@@ -840,6 +986,7 @@ function getObjectFormQrErrorMessage(error) {
 
 function resetContainerPage() {
   currentContainerDetail = null;
+  resetContainerDeleteFlow();
   ui.containerPageNameNode.textContent = "Loading container...";
   ui.containerPageSummaryNode.textContent = "Loading container details...";
   ui.containerFullPathNode.textContent = "Loading path...";
@@ -928,6 +1075,7 @@ function resetItemMovePage() {
 }
 
 function resetObjectForm() {
+  clearObjectFormPhotoPreviewUrl();
   currentObjectFormState = null;
   ui.objectFormBackLink.href = "/";
   ui.objectFormBackLink.textContent = "Back";
@@ -1171,13 +1319,27 @@ async function loadTopLevelItems() {
 
 async function loadRecentObjects() {
   const data = await fetchJson("/api/recent-objects");
-  const rows = data.recentObjects.map((recentObject) =>
+  currentRecentActivityObjects = Array.isArray(data.recentObjects)
+    ? data.recentObjects
+    : [];
+  currentRecentActivityExpanded = false;
+  renderRecentActivity();
+}
+
+function renderRecentActivity() {
+  const visibleRecentObjects = currentRecentActivityExpanded
+    ? currentRecentActivityObjects
+    : currentRecentActivityObjects.slice(0, RECENT_ACTIVITY_COLLAPSED_LIMIT);
+  const rows = visibleRecentObjects.map((recentObject) =>
     createObjectRow({
       badge: recentObject.objectType === "container" ? "Container" : "Item",
       context: getRecentObjectContext(recentObject),
-      href: buildObjectPath(recentObject.objectType, recentObject.objectId),
-      name: recentObject.name,
-      pathSegments: recentObject.topLevel ? null : recentObject.path,
+      href: recentObject.canNavigate === false
+        ? null
+        : buildObjectPath(recentObject.objectType, recentObject.objectId),
+      name: recentObject.activityLabel
+        ? `${recentObject.activityLabel}: ${recentObject.name}`
+        : recentObject.name,
       ...buildThumbnailOptions(
         recentObject.objectType,
         recentObject.objectId,
@@ -1187,19 +1349,30 @@ async function loadRecentObjects() {
       )
     })
   );
+  const hasMoreRecentActivity =
+    currentRecentActivityObjects.length > RECENT_ACTIVITY_COLLAPSED_LIMIT;
 
-  updateCountSummary(
-    ui.recentSummaryNode,
-    data.recentObjects.length,
-    "recent object",
-    "recent objects"
-  );
+  ui.recentSummaryNode.textContent = currentRecentActivityObjects.length
+    ? `Showing ${visibleRecentObjects.length} of ${formatCount(
+        currentRecentActivityObjects.length,
+        "recent activity",
+        "recent activities"
+      )}`
+    : "No recent activity yet.";
   renderObjectList(
     ui.recentListNode,
     ui.recentEmptyNode,
     rows,
     "Open a container or item to see it here."
   );
+  ui.recentListNode.classList.toggle(
+    "recent-activity-list-expanded",
+    currentRecentActivityExpanded && hasMoreRecentActivity
+  );
+  ui.recentToggleButton.hidden = !hasMoreRecentActivity;
+  ui.recentToggleButton.textContent = currentRecentActivityExpanded
+    ? "Show less"
+    : "Show more";
 }
 
 async function loadInventoryStats() {
@@ -1218,7 +1391,7 @@ function getOverviewObjectContext(object) {
   return object.topLevel ? "Top level" : object.fullPath;
 }
 
-function renderPathList(paths, emptyMessage) {
+function renderPathList(listNode, emptyNode, paths, emptyMessage) {
   const rows = paths.map((relationshipPath) => {
     const row = document.createElement("li");
     const pathNode = document.createElement("p");
@@ -1257,30 +1430,45 @@ function renderPathList(paths, emptyMessage) {
   });
   const isEmpty = rows.length === 0;
 
-  ui.inventoryPathsListNode.replaceChildren(...rows);
-  ui.inventoryPathsListNode.hidden = isEmpty;
-  ui.inventoryPathsEmptyNode.hidden = !isEmpty;
-  ui.inventoryPathsEmptyNode.textContent = emptyMessage;
+  listNode.replaceChildren(...rows);
+  listNode.hidden = isEmpty;
+  emptyNode.hidden = !isEmpty;
+  emptyNode.textContent = emptyMessage;
 }
 
 function renderInventoryOverview(data) {
   const itemRows = data.items.map((item) =>
     createObjectRow({
       badge: "Item",
-      context: getOverviewObjectContext(item),
+      context: "",
       href: buildObjectPath("item", item.id),
       name: item.name,
-      pathSegments: item.topLevel ? null : item.path
+      showContext: false,
+      ...buildThumbnailOptions("item", item.id, item.name, item.photoPath, null, "Item")
     })
   );
   const containerRows = data.containers.map((container) =>
     createObjectRow({
       badge: "Container",
-      context: getOverviewObjectContext(container),
+      context: "",
       href: buildObjectPath("container", container.id),
       name: container.name,
-      pathSegments: container.topLevel ? null : container.path
+      showContext: false,
+      ...buildThumbnailOptions(
+        "container",
+        container.id,
+        container.name,
+        container.photoPath,
+        null,
+        "Container"
+      )
     })
+  );
+  const itemPaths = data.relationshipPaths.filter(
+    (relationshipPath) => relationshipPath.objectType === "item"
+  );
+  const containerPaths = data.relationshipPaths.filter(
+    (relationshipPath) => relationshipPath.objectType === "container"
   );
 
   ui.inventoryOverviewSummaryNode.textContent = `${formatCount(
@@ -1318,7 +1506,18 @@ function renderInventoryOverview(data) {
     containerRows,
     "No containers yet."
   );
-  renderPathList(data.relationshipPaths, "No paths yet.");
+  renderPathList(
+    ui.inventoryItemPathsListNode,
+    ui.inventoryItemPathsEmptyNode,
+    itemPaths,
+    "No item paths yet."
+  );
+  renderPathList(
+    ui.inventoryContainerPathsListNode,
+    ui.inventoryContainerPathsEmptyNode,
+    containerPaths,
+    "No container paths yet."
+  );
 }
 
 async function runSearch(query) {
@@ -1414,6 +1613,11 @@ function handleInventoryOverviewLinkClick() {
   navigateTo("/inventory-overview");
 }
 
+function handleRecentToggleClick() {
+  currentRecentActivityExpanded = !currentRecentActivityExpanded;
+  renderRecentActivity();
+}
+
 async function renderHomeView() {
   setActiveView("home");
   resetHomeData();
@@ -1459,7 +1663,7 @@ async function renderHomeView() {
       ui.recentSummaryNode,
       ui.recentListNode,
       ui.recentEmptyNode,
-      "Could not load recent objects."
+      "Could not load recent activity."
     );
   }
 
@@ -1497,7 +1701,18 @@ async function renderInventoryOverviewPage() {
       [],
       "Containers are unavailable."
     );
-    renderPathList([], "Relationship paths are unavailable.");
+    renderPathList(
+      ui.inventoryItemPathsListNode,
+      ui.inventoryItemPathsEmptyNode,
+      [],
+      "Item paths are unavailable."
+    );
+    renderPathList(
+      ui.inventoryContainerPathsListNode,
+      ui.inventoryContainerPathsEmptyNode,
+      [],
+      "Container paths are unavailable."
+    );
   }
 }
 
@@ -1507,7 +1722,15 @@ function renderContainerDetail(detail) {
       badge: "Container",
       context: "Nested container",
       href: buildObjectPath("container", container.id),
-      name: container.name
+      name: container.name,
+      ...buildThumbnailOptions(
+        "container",
+        container.id,
+        container.name,
+        container.photoPath,
+        null,
+        "Container"
+      )
     })
   );
   const childItemRows = detail.childItems.map((item) =>
@@ -1515,7 +1738,15 @@ function renderContainerDetail(detail) {
       badge: "Item",
       context: "Item in this container",
       href: buildObjectPath("item", item.id),
-      name: item.name
+      name: item.name,
+      ...buildThumbnailOptions(
+        "item",
+        item.id,
+        item.name,
+        item.photoPath,
+        null,
+        "Item"
+      )
     })
   );
 
@@ -1526,7 +1757,11 @@ function renderContainerDetail(detail) {
     "child container",
     "child containers"
   )} and ${formatCount(detail.itemCount, "item", "items")}.`;
-  renderPathLinks(ui.containerFullPathNode, detail.path, detail.fullPath);
+  renderPathRows(
+    ui.containerFullPathNode,
+    detail.relationshipPaths,
+    detail.fullPath
+  );
   ui.containerQrStatusNode.textContent = getQrStatus(detail.container.qrCode);
   ui.containerItemCountNode.textContent = String(detail.itemCount);
   ui.containerSubcontainerCountNode.textContent = String(
@@ -1632,11 +1867,7 @@ function renderItemDetail(detail) {
   ui.itemPageSummaryNode.textContent = detail.topLevel
     ? "Top-level item."
     : `Currently inside ${detail.currentParentContainer.name}.`;
-  if (detail.topLevel) {
-    ui.itemLocationNode.textContent = "Top Level";
-  } else {
-    renderPathLinks(ui.itemLocationNode, detail.path, detail.fullPath);
-  }
+  renderPathLinks(ui.itemLocationNode, detail.path, detail.fullPath);
   ui.itemQrStatusNode.textContent = getQrStatus(detail.item.qrCode);
   ui.itemActionNote.textContent =
     "Edit details, move this item, or delete it from here.";
@@ -1820,10 +2051,10 @@ function updateObjectFormCopy() {
 }
 
 function renderObjectFormPhotoPanel() {
-  if (!currentObjectFormState || currentObjectFormState.mode !== "edit") {
+  if (!currentObjectFormState) {
     renderPhotoPanel({
       disabled: true,
-      emptyMessage: "Save this object first to add a photo.",
+      emptyMessage: "Photo controls are unavailable.",
       imageNode: ui.objectFormPhotoImageNode,
       objectId: null,
       objectType: "item",
@@ -1832,6 +2063,36 @@ function renderObjectFormPhotoPanel() {
       removeButton: ui.objectFormPhotoRemoveButton,
       statusNode: ui.objectFormPhotoStatusNode
     });
+    return;
+  }
+
+  if (currentObjectFormState.mode === "create") {
+    if (currentObjectFormState.pendingPhotoFile) {
+      if (!currentObjectFormPhotoPreviewUrl) {
+        currentObjectFormPhotoPreviewUrl = URL.createObjectURL(
+          currentObjectFormState.pendingPhotoFile
+        );
+      }
+
+      ui.objectFormPhotoImageNode.hidden = false;
+      ui.objectFormPhotoImageNode.src = currentObjectFormPhotoPreviewUrl;
+      ui.objectFormPhotoImageNode.alt =
+        `${currentObjectFormState.pendingPhotoFile.name} preview`;
+    } else {
+      ui.objectFormPhotoImageNode.hidden = true;
+      ui.objectFormPhotoImageNode.removeAttribute("src");
+      ui.objectFormPhotoImageNode.alt = "";
+    }
+
+    ui.objectFormPhotoPickButton.disabled = false;
+    ui.objectFormPhotoPickButton.textContent =
+      currentObjectFormState.pendingPhotoFile ? "Replace Photo" : "Attach Photo";
+    ui.objectFormPhotoRemoveButton.disabled =
+      !currentObjectFormState.pendingPhotoFile;
+    ui.objectFormPhotoStatusNode.textContent =
+      currentObjectFormState.pendingPhotoFile
+        ? `Photo selected: ${currentObjectFormState.pendingPhotoFile.name}`
+        : "Choose a photo now, or add one later.";
     return;
   }
 
@@ -1957,6 +2218,7 @@ async function renderObjectForm(route) {
         objectId: null,
         objectType: fixedObjectType,
         parentOptions,
+        pendingPhotoFile: null,
         photoPath: null,
         qrCode: prefillQrCode,
         prefillQrCode,
@@ -2446,6 +2708,17 @@ async function handleObjectFormPhotoInputChange() {
   const file = ui.objectFormPhotoInput.files && ui.objectFormPhotoInput.files[0];
 
   if (
+    currentObjectFormState &&
+    currentObjectFormState.mode === "create"
+  ) {
+    clearObjectFormPhotoPreviewUrl();
+    currentObjectFormState.pendingPhotoFile = file || null;
+    renderObjectFormPhotoPanel();
+    ui.objectFormPhotoInput.value = "";
+    return;
+  }
+
+  if (
     !currentObjectFormState ||
     currentObjectFormState.mode !== "edit" ||
     !file
@@ -2478,6 +2751,17 @@ async function handleObjectFormPhotoInputChange() {
 }
 
 async function handleObjectFormPhotoRemoveClick() {
+  if (
+    currentObjectFormState &&
+    currentObjectFormState.mode === "create"
+  ) {
+    clearObjectFormPhotoPreviewUrl();
+    currentObjectFormState.pendingPhotoFile = null;
+    ui.objectFormPhotoInput.value = "";
+    renderObjectFormPhotoPanel();
+    return;
+  }
+
   if (
     !currentObjectFormState ||
     currentObjectFormState.mode !== "edit" ||
@@ -2727,6 +3011,181 @@ function getNextPathAfterContainerDelete(detail) {
   return "/";
 }
 
+function getContainerDeleteChildren(detail) {
+  return [
+    ...detail.childContainers.map((container) => ({
+      id: container.id,
+      name: container.name,
+      objectType: "container",
+      parentContainerId: container.parentContainerId
+    })),
+    ...detail.childItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      objectType: "item",
+      parentContainerId: item.parentContainerId
+    }))
+  ];
+}
+
+function resetContainerDeleteFlow() {
+  currentContainerDeleteState = null;
+
+  if (!ui.containerDeletePanel) {
+    return;
+  }
+
+  ui.containerDeletePanel.hidden = true;
+  ui.containerDeleteAllDestinationField.hidden = true;
+  ui.containerDeleteCustomListNode.hidden = true;
+  ui.containerDeleteChildListNode.replaceChildren();
+  ui.containerDeleteCustomListNode.replaceChildren();
+  ui.containerDeleteDestinationSelect.replaceChildren();
+  ui.containerDeleteConfirmButton.disabled = false;
+  ui.containerDeleteConfirmButton.textContent = "Confirm Delete";
+}
+
+function setContainerDeleteMode(mode) {
+  if (!currentContainerDeleteState) {
+    return;
+  }
+
+  currentContainerDeleteState.mode = mode;
+  ui.containerDeleteAllDestinationField.hidden = mode !== "container";
+  ui.containerDeleteCustomListNode.hidden = mode !== "custom";
+  ui.containerActionNote.textContent =
+    mode === "custom"
+      ? "Choose a destination for every direct child before deleting."
+      : "Review the direct children, then confirm deletion.";
+}
+
+function buildContainerDeleteOptionFilter(child = null) {
+  return (containerOption) => {
+    if (
+      currentContainerDeleteState &&
+      containerOption.id === currentContainerDeleteState.containerId
+    ) {
+      return false;
+    }
+
+    if (!child || child.objectType !== "container") {
+      return true;
+    }
+
+    const blockedIds = findDescendantContainerIds(
+      currentContainerDeleteState.parentOptions,
+      child.id
+    );
+    return containerOption.id !== child.id && !blockedIds.has(containerOption.id);
+  };
+}
+
+function populateContainerDeleteDestinationSelects() {
+  if (!currentContainerDeleteState) {
+    return;
+  }
+
+  const allDestinationOptions = currentContainerDeleteState.parentOptions.filter(
+    (containerOption) =>
+      buildContainerDeleteOptionFilter()(containerOption) &&
+      !currentContainerDeleteState.sourceDescendantIds.has(containerOption.id)
+  );
+  populateSelectWithContainerOptions(
+    ui.containerDeleteDestinationSelect,
+    allDestinationOptions,
+    null
+  );
+
+  ui.containerDeleteCustomListNode.replaceChildren(
+    ...currentContainerDeleteState.children.map((child) => {
+      const wrapper = document.createElement("label");
+      wrapper.className = "delete-child-destination";
+
+      const title = document.createElement("span");
+      title.className = "delete-child-title";
+      title.textContent = `${getObjectLabel(child.objectType)}: ${child.name}`;
+
+      const select = document.createElement("select");
+      select.className = "text-input";
+      select.dataset.deleteChildObjectType = child.objectType;
+      select.dataset.deleteChildObjectId = String(child.id);
+      populateSelectWithContainerOptions(
+        select,
+        currentContainerDeleteState.parentOptions.filter(
+          buildContainerDeleteOptionFilter(child)
+        ),
+        currentContainerDetail.container.parentContainerId
+      );
+
+      wrapper.append(title, select);
+      return wrapper;
+    })
+  );
+}
+
+function renderContainerDeleteChildren(children) {
+  if (children.length === 0) {
+    const emptyItem = document.createElement("li");
+    emptyItem.textContent = "This container has no direct contents.";
+    ui.containerDeleteChildListNode.replaceChildren(emptyItem);
+    return;
+  }
+
+  ui.containerDeleteChildListNode.replaceChildren(
+    ...children.map((child) => {
+      const listItem = document.createElement("li");
+      listItem.textContent = `${getObjectLabel(child.objectType)}: ${child.name}`;
+      return listItem;
+    })
+  );
+}
+
+function buildContainerDeletePayload() {
+  const mode = currentContainerDeleteState?.mode;
+
+  if (mode === "parent" || mode === "topLevel") {
+    return {
+      contentStrategy: mode
+    };
+  }
+
+  if (mode === "container") {
+    return {
+      contentStrategy: "container",
+      destinationParentContainerId: Number(
+        ui.containerDeleteDestinationSelect.value
+      )
+    };
+  }
+
+  if (mode === "custom") {
+    return {
+      childDestinations: Array.from(
+        ui.containerDeleteCustomListNode.querySelectorAll("select")
+      ).map((select) => ({
+        objectId: Number(select.dataset.deleteChildObjectId),
+        objectType: select.dataset.deleteChildObjectType,
+        parentContainerId: select.value ? Number(select.value) : null
+      })),
+      contentStrategy: "custom"
+    };
+  }
+
+  return null;
+}
+
+function getNextPathAfterContainerDeleteWithMode(detail, payload) {
+  if (payload.contentStrategy === "topLevel") {
+    return "/";
+  }
+
+  if (payload.contentStrategy === "container") {
+    return buildObjectPath("container", payload.destinationParentContainerId);
+  }
+
+  return getNextPathAfterContainerDelete(detail);
+}
+
 function getContainerDeleteErrorMessage(error) {
   if (!error || !error.message) {
     return "Could not delete this container right now.";
@@ -2740,25 +3199,27 @@ async function handleContainerDeleteClick() {
     return;
   }
 
-  const { container } = currentContainerDetail;
-
-  if (
-    !window.confirm(
-      `Delete "${container.name}"? This will not delete its contents. Direct child items and containers will move up one level.`
-    )
-  ) {
-    return;
-  }
-
   ui.containerDeleteButton.disabled = true;
-  ui.containerActionNote.textContent = "Deleting container...";
+  ui.containerActionNote.textContent = "Loading delete options...";
 
   try {
-    await fetchJson(`/api/containers/${container.id}`, {
-      method: "DELETE"
-    });
+    const parentOptions = await loadParentContainerOptions();
+    const children = getContainerDeleteChildren(currentContainerDetail);
+    currentContainerDeleteState = {
+      children,
+      containerId: currentContainerDetail.container.id,
+      parentOptions,
+      sourceDescendantIds: findDescendantContainerIds(
+        parentOptions,
+        currentContainerDetail.container.id
+      )
+    };
 
-    navigateTo(getNextPathAfterContainerDelete(currentContainerDetail));
+    renderContainerDeleteChildren(children);
+    populateContainerDeleteDestinationSelects();
+    ui.containerDeletePanel.hidden = false;
+    setContainerDeleteMode("parent");
+    ui.containerDeleteButton.disabled = false;
   } catch (error) {
     if (error.status === 401) {
       showSignedOutState("Session expired. Sign in again.");
@@ -2766,6 +3227,62 @@ async function handleContainerDeleteClick() {
     }
 
     ui.containerDeleteButton.disabled = false;
+    ui.containerActionNote.textContent = getContainerDeleteErrorMessage(error);
+  }
+}
+
+function handleContainerDeleteCancelClick() {
+  resetContainerDeleteFlow();
+  ui.containerDeleteButton.disabled = false;
+  ui.containerActionNote.textContent = "Container deletion canceled.";
+}
+
+async function handleContainerDeleteConfirmClick() {
+  if (!currentContainerDetail || !currentContainerDeleteState) {
+    return;
+  }
+
+  const { container } = currentContainerDetail;
+  const payload = buildContainerDeletePayload();
+
+  if (!payload) {
+    ui.containerActionNote.textContent = "Choose how to move contents before deleting.";
+    return;
+  }
+
+  if (
+    !window.confirm(
+      `Delete "${container.name}"? This will not delete its contents.`
+    )
+  ) {
+    return;
+  }
+
+  ui.containerDeleteConfirmButton.disabled = true;
+  ui.containerDeleteConfirmButton.textContent = "Deleting...";
+  ui.containerActionNote.textContent = "Deleting container...";
+
+  try {
+    await fetchJson(`/api/containers/${container.id}`, {
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "DELETE"
+    });
+
+    navigateTo(getNextPathAfterContainerDeleteWithMode(
+      currentContainerDetail,
+      payload
+    ));
+  } catch (error) {
+    if (error.status === 401) {
+      showSignedOutState("Session expired. Sign in again.");
+      return;
+    }
+
+    ui.containerDeleteConfirmButton.disabled = false;
+    ui.containerDeleteConfirmButton.textContent = "Confirm Delete";
     ui.containerActionNote.textContent = getContainerDeleteErrorMessage(error);
   }
 }
@@ -2980,6 +3497,9 @@ async function handleObjectFormSubmit(event) {
     let result;
 
     if (currentObjectFormState.mode === "create") {
+      const pendingPhotoFile = currentObjectFormState.pendingPhotoFile;
+      let createdObjectId;
+
       if (objectType === "container") {
         result = parentContainerId
           ? await fetchJson(`/api/containers/${parentContainerId}/children`, {
@@ -3004,34 +3524,72 @@ async function handleObjectFormSubmit(event) {
               method: "POST"
             });
 
-        navigateTo(buildObjectPath("container", result.container.id));
-        return;
+        createdObjectId = result.container.id;
+      } else {
+        result = parentContainerId
+          ? await fetchJson(`/api/containers/${parentContainerId}/items`, {
+              body: JSON.stringify({
+                name,
+                parentContainerId,
+                qrCode
+              }),
+              headers: {
+                "Content-Type": "application/json"
+              },
+              method: "POST"
+            })
+          : await fetchJson("/api/items", {
+              body: JSON.stringify({
+                name,
+                qrCode
+              }),
+              headers: {
+                "Content-Type": "application/json"
+              },
+              method: "POST"
+            });
+
+        createdObjectId = result.item.id;
       }
 
-      result = parentContainerId
-        ? await fetchJson(`/api/containers/${parentContainerId}/items`, {
-            body: JSON.stringify({
-              name,
-              parentContainerId,
-              qrCode
-            }),
-            headers: {
-              "Content-Type": "application/json"
-            },
-            method: "POST"
-          })
-        : await fetchJson("/api/items", {
-            body: JSON.stringify({
-              name,
-              qrCode
-            }),
-            headers: {
-              "Content-Type": "application/json"
-            },
-            method: "POST"
-          });
+      if (pendingPhotoFile) {
+        ui.objectFormSubmitButton.textContent = "Uploading photo...";
 
-      navigateTo(buildObjectPath("item", result.item.id));
+        try {
+          await uploadObjectPhoto(objectType, createdObjectId, pendingPhotoFile);
+        } catch (photoError) {
+          if (photoError.status === 401) {
+            showSignedOutState("Session expired. Sign in again.");
+            return;
+          }
+
+          currentObjectFormState = {
+            fixedObjectType: objectType,
+            initialName: name,
+            initialParentContainerId: parentContainerId,
+            mode: "edit",
+            objectId: createdObjectId,
+            objectType,
+            parentOptions: currentObjectFormState.parentOptions,
+            pendingPhotoFile: null,
+            photoPath: null,
+            qrCode: result[objectType].qrCode,
+            prefillParentContainerId: null,
+            returnPath: buildObjectPath(objectType, createdObjectId)
+          };
+          showObjectFormError(
+            `Created ${getLowerObjectLabel(objectType)}, but photo upload failed. ${photoError.message}`
+          );
+          clearObjectFormPhotoPreviewUrl();
+          ui.objectFormSubmitButton.disabled = false;
+          ui.objectFormCancelButton.disabled = false;
+          updateObjectFormCopy();
+          renderObjectFormPhotoPanel();
+          return;
+        }
+      }
+
+      navigateTo(buildObjectPath(objectType, createdObjectId));
       return;
     }
 
@@ -3305,6 +3863,7 @@ ui.scanManualForm.addEventListener("submit", handleScanManualSubmit);
 ui.scanRetryButton.addEventListener("click", handleScanRetryClick);
 ui.addEntryButton.addEventListener("click", handleAddEntryClick);
 ui.inventoryOverviewLink.addEventListener("click", handleInventoryOverviewLinkClick);
+ui.recentToggleButton.addEventListener("click", handleRecentToggleClick);
 ui.containerAddItemButton.addEventListener("click", handleContainerAddItemClick);
 ui.containerAddContainerButton.addEventListener(
   "click",
@@ -3313,6 +3872,19 @@ ui.containerAddContainerButton.addEventListener(
 ui.containerEditButton.addEventListener("click", handleContainerEditClick);
 ui.containerMoveButton.addEventListener("click", handleContainerMoveClick);
 ui.containerDeleteButton.addEventListener("click", handleContainerDeleteClick);
+ui.containerDeleteCancelButton.addEventListener(
+  "click",
+  handleContainerDeleteCancelClick
+);
+ui.containerDeleteConfirmButton.addEventListener(
+  "click",
+  handleContainerDeleteConfirmClick
+);
+for (const button of ui.containerDeleteModeButtons) {
+  button.addEventListener("click", () => {
+    setContainerDeleteMode(button.dataset.containerDeleteMode);
+  });
+}
 ui.containerPhotoPickButton.addEventListener("click", () =>
   openPhotoPicker(ui.containerPhotoInput)
 );

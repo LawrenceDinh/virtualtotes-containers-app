@@ -50,6 +50,7 @@ test("initializeDatabase creates the expected tables on disk", () => {
     assert.deepEqual(tableNames, [
       "containers",
       "items",
+      "recent_activity",
       "recent_objects",
       "users"
     ]);

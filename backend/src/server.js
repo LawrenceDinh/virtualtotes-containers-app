@@ -41,7 +41,7 @@ const {
 } = require("./photos");
 const { linkQr, openByQr, removeQr, replaceQr } = require("./qr");
 const {
-  listRecentObjects,
+  listRecentActivity,
   recordRecentObjectOpen
 } = require("./recent-objects");
 const { searchObjects } = require("./search");
@@ -343,10 +343,11 @@ async function handleMoveContainer(request, response, containerId) {
   sendJson(response, 200, result);
 }
 
-function handleDeleteContainer(request, response, containerId) {
+async function handleDeleteContainer(request, response, containerId) {
   const user = requireAuthenticatedUser(request);
+  const body = await readJsonBody(request);
   const result = withDatabase((database) =>
-    deleteContainer(database, containerId, user.id)
+    deleteContainer(database, containerId, user.id, body)
   );
 
   sendJson(response, 200, result);
@@ -397,7 +398,7 @@ function handleGetItemDetail(request, response, itemId) {
 function handleListRecentObjects(request, response) {
   const user = requireAuthenticatedUser(request);
   const result = withDatabase((database) =>
-    listRecentObjects(database, user.id)
+    listRecentActivity(database, user.id)
   );
 
   sendJson(response, 200, result);
@@ -728,7 +729,7 @@ async function handleRequest(request, response) {
     request.method === "DELETE" &&
     containerDetailMatch
   ) {
-    handleDeleteContainer(request, response, Number(containerDetailMatch[1]));
+    await handleDeleteContainer(request, response, Number(containerDetailMatch[1]));
     return;
   }
 

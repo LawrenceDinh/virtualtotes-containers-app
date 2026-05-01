@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const test = require("node:test");
 
@@ -14,6 +15,7 @@ const {
   listTopLevelItems,
   moveItem
 } = require("./items");
+const { config } = require("./config");
 
 const schemaSql = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8");
 
@@ -73,6 +75,25 @@ function assertHttpError(callback, expectedStatusCode, expectedMessagePart) {
   });
 }
 
+function withTemporaryPhotoPath(callback) {
+  const originalPhotoPath = config.photoPath;
+  const temporaryPhotoPath = fs.mkdtempSync(
+    path.join(os.tmpdir(), "containers-app-item-delete-")
+  );
+
+  config.photoPath = temporaryPhotoPath;
+
+  try {
+    callback(temporaryPhotoPath);
+  } finally {
+    config.photoPath = originalPhotoPath;
+    fs.rmSync(temporaryPhotoPath, {
+      force: true,
+      recursive: true
+    });
+  }
+}
+
 test("create top-level item, create item in container, and list top-level items", () => {
   const database = createTestDatabase();
 
@@ -97,6 +118,32 @@ test("create top-level item, create item in container, and list top-level items"
     assert.deepEqual(
       topLevelItems.items.map((item) => item.name),
       ["Extension Cord", "Loose Batteries"]
+    );
+    assert.deepEqual(
+      database
+        .prepare(
+          `
+            SELECT actionType, objectType, objectName, toLocation
+            FROM recent_activity
+            WHERE userId = 1
+            ORDER BY id ASC
+          `
+        )
+        .all(),
+      [
+        {
+          actionType: "created",
+          objectType: "item",
+          objectName: "Extension Cord",
+          toLocation: "Top level"
+        },
+        {
+          actionType: "created",
+          objectType: "item",
+          objectName: "Label Maker",
+          toLocation: "Garage Tote"
+        }
+      ]
     );
 
     assertHttpError(
@@ -123,11 +170,37 @@ test("getItemDetail returns item info, top-level status, full path, and current 
     assert.equal(topLevelDetail.item.name, "Loose Batteries");
     assert.equal(topLevelDetail.topLevel, true);
     assert.equal(topLevelDetail.fullPath, "Loose Batteries");
+    assert.deepEqual(topLevelDetail.path, [
+      {
+        id: 1,
+        name: "Loose Batteries",
+        objectType: "item"
+      }
+    ]);
     assert.equal(topLevelDetail.currentParentContainer, null);
 
     assert.equal(nestedDetail.item.name, "Packing Tape");
     assert.equal(nestedDetail.topLevel, false);
     assert.equal(nestedDetail.fullPath, "Packing Tape > Garage Tote");
+    assert.deepEqual(
+      nestedDetail.path.map((segment) => ({
+        id: segment.id,
+        name: segment.name,
+        objectType: segment.objectType
+      })),
+      [
+        {
+          id: 2,
+          name: "Packing Tape",
+          objectType: "item"
+        },
+        {
+          id: 1,
+          name: "Garage Tote",
+          objectType: "container"
+        }
+      ]
+    );
     assert.equal(nestedDetail.currentParentContainer.id, 1);
     assert.equal(nestedDetail.currentParentContainer.name, "Garage Tote");
   } finally {
@@ -217,6 +290,41 @@ test("moveItem supports all phase-1 movement paths and enforces route boundaries
     assert.equal(backToTopLevel.topLevel, true);
     assert.equal(backToTopLevel.fullPath, "Packing Tape");
     assert.equal(backToTopLevel.currentParentContainer, null);
+    assert.deepEqual(
+      database
+        .prepare(
+          `
+            SELECT actionType, objectType, objectName, fromLocation, toLocation
+            FROM recent_activity
+            WHERE userId = 1
+            ORDER BY id ASC
+          `
+        )
+        .all(),
+      [
+        {
+          actionType: "moved",
+          objectType: "item",
+          objectName: "Loose Batteries",
+          fromLocation: "Top level",
+          toLocation: "Garage Tote"
+        },
+        {
+          actionType: "moved",
+          objectType: "item",
+          objectName: "Loose Batteries",
+          fromLocation: "Garage Tote",
+          toLocation: "Shelf Bin > Garage Tote"
+        },
+        {
+          actionType: "moved",
+          objectType: "item",
+          objectName: "Packing Tape",
+          fromLocation: "Garage Tote",
+          toLocation: "Top level"
+        }
+      ]
+    );
 
     assertHttpError(
       () =>
@@ -251,6 +359,26 @@ test("deleteItem deletes owned items and enforces ownership", () => {
         .get().count,
       0
     );
+    assert.deepEqual(
+      database
+        .prepare(
+          `
+            SELECT actionType, objectType, objectId, objectName, fromLocation
+            FROM recent_activity
+            WHERE userId = 1
+          `
+        )
+        .all(),
+      [
+        {
+          actionType: "deleted",
+          objectType: "item",
+          objectId: 1,
+          objectName: "Loose Batteries",
+          fromLocation: "Top level"
+        }
+      ]
+    );
 
     assertHttpError(
       () => deleteItem(database, 3, 1),
@@ -260,4 +388,104 @@ test("deleteItem deletes owned items and enforces ownership", () => {
   } finally {
     database.close();
   }
+});
+
+test("deleteItem removes only the deleted item photo", () => {
+  withTemporaryPhotoPath((photoPath) => {
+    const database = createTestDatabase();
+
+    try {
+      fs.writeFileSync(path.join(photoPath, "deleted-item.jpg"), "deleted");
+      fs.writeFileSync(path.join(photoPath, "other-item.jpg"), "other");
+      fs.writeFileSync(path.join(photoPath, "container.jpg"), "container");
+
+      database
+        .prepare("UPDATE items SET photoPath = ? WHERE id = ?")
+        .run("deleted-item.jpg", 1);
+      database
+        .prepare("UPDATE items SET photoPath = ? WHERE id = ?")
+        .run("other-item.jpg", 2);
+      database
+        .prepare("UPDATE containers SET photoPath = ? WHERE id = ?")
+        .run("container.jpg", 1);
+
+      assert.deepEqual(deleteItem(database, 1, 1), {
+        success: true
+      });
+
+      assert.equal(fs.existsSync(path.join(photoPath, "deleted-item.jpg")), false);
+      assert.equal(fs.existsSync(path.join(photoPath, "other-item.jpg")), true);
+      assert.equal(fs.existsSync(path.join(photoPath, "container.jpg")), true);
+      assert.equal(
+        database
+          .prepare("SELECT COUNT(*) AS count FROM items WHERE id = 1")
+          .get().count,
+        0
+      );
+      assert.equal(
+        database.prepare("SELECT photoPath FROM items WHERE id = 2").get()
+          .photoPath,
+        "other-item.jpg"
+      );
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("deleteItem succeeds when no photo or stored photo file is missing", () => {
+  withTemporaryPhotoPath((photoPath) => {
+    const database = createTestDatabase();
+
+    try {
+      database
+        .prepare("UPDATE items SET photoPath = ? WHERE id = ?")
+        .run("missing-item.jpg", 2);
+
+      assert.deepEqual(deleteItem(database, 1, 1), {
+        success: true
+      });
+      assert.deepEqual(deleteItem(database, 2, 1), {
+        success: true
+      });
+
+      assert.equal(fs.existsSync(path.join(photoPath, "missing-item.jpg")), false);
+      assert.equal(
+        database
+          .prepare("SELECT COUNT(*) AS count FROM items WHERE id IN (1, 2)")
+          .get().count,
+        0
+      );
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("deleteItem does not remove foreign item photos", () => {
+  withTemporaryPhotoPath((photoPath) => {
+    const database = createTestDatabase();
+
+    try {
+      fs.writeFileSync(path.join(photoPath, "foreign-item.jpg"), "foreign");
+      database
+        .prepare("UPDATE items SET photoPath = ? WHERE id = ?")
+        .run("foreign-item.jpg", 3);
+
+      assertHttpError(
+        () => deleteItem(database, 3, 1),
+        404,
+        "not found"
+      );
+
+      assert.equal(fs.existsSync(path.join(photoPath, "foreign-item.jpg")), true);
+      assert.equal(
+        database.prepare("SELECT photoPath FROM items WHERE id = 3").get()
+          .photoPath,
+        "foreign-item.jpg"
+      );
+    } finally {
+      database.close();
+    }
+  });
 });

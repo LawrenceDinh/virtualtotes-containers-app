@@ -190,10 +190,10 @@
             <div class="section-heading">
               <div>
                 <p class="section-kicker">Recent</p>
-                <h2>Recent Objects</h2>
+                <h2>Recent Activity</h2>
               </div>
               <p class="section-summary" data-recent-summary>
-                Loading recent objects...
+                Loading recent activity...
               </p>
             </div>
 
@@ -201,6 +201,14 @@
             <p class="empty-state" data-recent-empty hidden>
               Open a container or item to see it here.
             </p>
+            <button
+              class="secondary-button recent-toggle"
+              type="button"
+              data-recent-toggle
+              hidden
+            >
+              Show more
+            </button>
           </section>
 
           <section class="panel">
@@ -287,10 +295,22 @@
                 Loading relationship paths...
               </p>
             </div>
-            <ul class="path-list" data-inventory-paths></ul>
-            <p class="empty-state" data-inventory-paths-empty hidden>
-              No paths yet.
-            </p>
+            <div class="path-groups" data-inventory-paths>
+              <section class="path-subsection">
+                <h3>Item Paths</h3>
+                <ul class="path-list" data-inventory-item-paths></ul>
+                <p class="empty-state" data-inventory-item-paths-empty hidden>
+                  No item paths yet.
+                </p>
+              </section>
+              <section class="path-subsection">
+                <h3>Container Paths</h3>
+                <ul class="path-list" data-inventory-container-paths></ul>
+                <p class="empty-state" data-inventory-container-paths-empty hidden>
+                  No container paths yet.
+                </p>
+              </section>
+            </div>
           </section>
         </section>
 
@@ -836,6 +856,41 @@
               <button class="danger-button" type="button" data-container-delete>
                 Delete Container
               </button>
+            </div>
+
+            <div class="delete-flow-panel" data-container-delete-panel hidden>
+              <p class="helper-text">
+                Deleting this container will not delete its contents. Choose where
+                direct child items and containers go before deleting.
+              </p>
+              <ul class="compact-object-list" data-container-delete-child-list></ul>
+              <div class="delete-option-grid">
+                <button class="secondary-button" type="button" data-container-delete-mode="parent">
+                  Move contents to parent
+                </button>
+                <button class="secondary-button" type="button" data-container-delete-mode="topLevel">
+                  Move contents to top level
+                </button>
+                <button class="secondary-button" type="button" data-container-delete-mode="container">
+                  Move contents to another container
+                </button>
+                <button class="secondary-button" type="button" data-container-delete-mode="custom">
+                  Choose destination per item/container
+                </button>
+              </div>
+              <label class="form-field" data-container-delete-all-destination-field hidden>
+                <span>Destination container</span>
+                <select class="text-input" data-container-delete-destination-select></select>
+              </label>
+              <div class="delete-custom-list" data-container-delete-custom-list hidden></div>
+              <div class="button-row">
+                <button class="danger-button" type="button" data-container-delete-confirm>
+                  Confirm Delete
+                </button>
+                <button class="secondary-button" type="button" data-container-delete-cancel>
+                  Cancel
+                </button>
+              </div>
             </div>
 
             <p class="helper-text" data-container-action-note>

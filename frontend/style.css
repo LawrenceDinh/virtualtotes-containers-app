@@ -245,6 +245,47 @@ select.text-input {
   gap: 10px;
 }
 
+.delete-flow-panel,
+.delete-custom-list {
+  display: grid;
+  gap: 12px;
+}
+
+.delete-flow-panel {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-strong);
+}
+
+.delete-option-grid,
+.button-row {
+  display: grid;
+  gap: 10px;
+}
+
+.compact-object-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.compact-object-list li,
+.delete-child-destination {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.delete-child-title {
+  font-weight: 700;
+}
+
 .type-toggle {
   margin: 0;
   padding: 0;
@@ -398,12 +439,35 @@ select.text-input {
   gap: 10px;
 }
 
+.recent-activity-list-expanded {
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.recent-toggle {
+  margin-top: 12px;
+  width: 100%;
+}
+
 .path-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   gap: 8px;
+}
+
+.path-groups,
+.path-subsection {
+  display: grid;
+  gap: 12px;
+}
+
+.path-subsection h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
 }
 
 .path-row {
@@ -435,6 +499,10 @@ select.text-input {
 
 .object-row {
   text-decoration: none;
+}
+
+.object-row-inactive {
+  cursor: default;
 }
 
 .object-thumbnail {
@@ -485,6 +553,9 @@ select.text-input {
 
 .object-name-link,
 .path-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   color: var(--accent-strong);
   font-weight: 700;
   text-decoration: none;
@@ -497,6 +568,48 @@ select.text-input {
 
 .path-separator {
   color: var(--muted);
+}
+
+.detail-path-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+}
+
+.detail-path-row + .detail-path-row {
+  margin-top: 0.55rem;
+}
+
+.path-segment-thumbnail {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  overflow: hidden;
+  border: 1px solid rgba(31, 106, 80, 0.2);
+  border-radius: 0.42rem;
+  background: rgba(31, 106, 80, 0.1);
+  color: var(--accent-strong);
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.path-segment-thumbnail img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.path-segment-thumbnail-container:empty::before {
+  content: "C";
+}
+
+.path-segment-thumbnail-item:empty::before {
+  content: "I";
 }
 
 .object-badge {
@@ -571,7 +684,9 @@ select.text-input {
   }
 
   .form-actions,
-  .type-toggle {
+  .type-toggle,
+  .delete-option-grid,
+  .button-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

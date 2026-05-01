@@ -385,6 +385,13 @@ test("HTTP integration covers auth and the core top-level container/item happy p
     assert.equal(itemDetail.body.item.name, "Packing Tape");
     assert.equal(itemDetail.body.topLevel, true);
     assert.equal(itemDetail.body.fullPath, "Packing Tape");
+    assert.deepEqual(itemDetail.body.path, [
+      {
+        id: itemId,
+        name: "Packing Tape",
+        objectType: "item"
+      }
+    ]);
     assert.equal(itemDetail.body.currentParentContainer, null);
 
     const logoutResult = await requestJson(server.baseUrl, "/api/auth/logout", {
@@ -483,6 +490,12 @@ test("HTTP integration returns authenticated inventory overview with owned paths
 
     try {
       database
+        .prepare("UPDATE containers SET photoPath = ? WHERE id = ?")
+        .run("garage-tote.jpg", parentContainerId);
+      database
+        .prepare("UPDATE items SET photoPath = ? WHERE id = ?")
+        .run("screwdriver.jpg", nestedItemId);
+      database
         .prepare("INSERT INTO containers (userId, name) VALUES (?, ?)")
         .run(otherUserId, "Other Tote");
       database
@@ -525,12 +538,15 @@ test("HTTP integration returns authenticated inventory overview with owned paths
 
     assert.equal(parentContainer.topLevel, true);
     assert.equal(parentContainer.fullPath, "Garage Tote");
+    assert.equal(parentContainer.photoPath, "garage-tote.jpg");
     assert.equal(childContainer.topLevel, false);
     assert.equal(childContainer.fullPath, "Inner Bin > Garage Tote");
     assert.equal(topLevelItem.topLevel, true);
     assert.equal(topLevelItem.fullPath, "Loose Batteries");
     assert.equal(nestedItem.topLevel, false);
     assert.equal(nestedItem.fullPath, "Screwdriver > Inner Bin > Garage Tote");
+    assert.equal(nestedItem.photoPath, "screwdriver.jpg");
+    assert.equal(JSON.stringify(overview.body).includes(server.photoPath), false);
     assert.deepEqual(
       overview.body.relationshipPaths.map((relationshipPath) => relationshipPath.path),
       [
@@ -553,7 +569,164 @@ test("HTTP integration returns authenticated inventory overview with owned paths
   }
 });
 
-test("HTTP integration deletes non-empty containers by promoting direct children", async () => {
+test("HTTP integration returns authenticated recent activity for creates, moves, deletes, and filters opens", async () => {
+  const server = await startTestServer();
+
+  try {
+    const unauthenticatedActivity = await requestJson(
+      server.baseUrl,
+      "/api/recent-objects"
+    );
+
+    assert.equal(unauthenticatedActivity.response.status, 401);
+
+    const sessionCookie = await loginAndGetSessionCookie(server.baseUrl);
+    const createContainer = await requestJson(server.baseUrl, "/api/containers", {
+      body: JSON.stringify({
+        name: "Garage Tote"
+      }),
+      headers: createJsonHeaders(sessionCookie),
+      method: "POST"
+    });
+    const containerId = createContainer.body.container.id;
+    const createItem = await requestJson(server.baseUrl, "/api/items", {
+      body: JSON.stringify({
+        name: "Miata"
+      }),
+      headers: createJsonHeaders(sessionCookie),
+      method: "POST"
+    });
+    const itemId = createItem.body.item.id;
+
+    await requestJson(server.baseUrl, `/api/items/${itemId}/move`, {
+      body: JSON.stringify({
+        parentContainerId: containerId
+      }),
+      headers: createJsonHeaders(sessionCookie),
+      method: "POST"
+    });
+    await requestJson(server.baseUrl, `/api/items/${itemId}`, {
+      headers: {
+        Cookie: sessionCookie
+      }
+    });
+    await requestJson(server.baseUrl, `/api/items/${itemId}`, {
+      headers: {
+        Cookie: sessionCookie
+      },
+      method: "DELETE"
+    });
+
+    const otherUserId = seedUser(server.databasePath, {
+      password: "otherpass",
+      username: "other"
+    });
+    const database = new Database(server.databasePath);
+
+    try {
+      database
+        .prepare(
+          `
+            INSERT INTO recent_activity (
+              userId,
+              actionType,
+              objectType,
+              objectId,
+              objectName
+            )
+            VALUES (?, 'opened', 'item', ?, 'Miata')
+          `
+        )
+        .run(1, itemId);
+      database
+        .prepare(
+          `
+            INSERT INTO recent_activity (
+              userId,
+              actionType,
+              objectType,
+              objectId,
+              objectName,
+              toLocation
+            )
+            VALUES (?, 'created', 'item', 999, 'Other Item', 'Top level')
+          `
+        )
+        .run(otherUserId);
+    } finally {
+      database.close();
+    }
+
+    const activity = await requestJson(server.baseUrl, "/api/recent-objects", {
+      headers: {
+        Cookie: sessionCookie
+      }
+    });
+
+    assert.equal(activity.response.status, 200);
+    assert.deepEqual(
+      activity.body.recentObjects.map((entry) => ({
+        actionType: entry.actionType,
+        activityLabel: entry.activityLabel,
+        canNavigate: entry.canNavigate,
+        fromLocation: entry.fromLocation,
+        name: entry.name,
+        objectType: entry.objectType,
+        toLocation: entry.toLocation
+      })),
+      [
+        {
+          actionType: "deleted",
+          activityLabel: "Deleted item",
+          canNavigate: false,
+          fromLocation: "Garage Tote",
+          name: "Miata",
+          objectType: "item",
+          toLocation: null
+        },
+        {
+          actionType: "moved",
+          activityLabel: "Moved item",
+          canNavigate: false,
+          fromLocation: "Top level",
+          name: "Miata",
+          objectType: "item",
+          toLocation: "Garage Tote"
+        },
+        {
+          actionType: "created",
+          activityLabel: "Created item",
+          canNavigate: false,
+          fromLocation: null,
+          name: "Miata",
+          objectType: "item",
+          toLocation: "Top level"
+        },
+        {
+          actionType: "created",
+          activityLabel: "Created container",
+          canNavigate: true,
+          fromLocation: null,
+          name: "Garage Tote",
+          objectType: "container",
+          toLocation: "Top level"
+        }
+      ]
+    );
+    assert.equal(
+      activity.body.recentObjects.some((entry) => entry.name === "Other Item"),
+      false
+    );
+    assert.equal(
+      activity.body.recentObjects.some((entry) => entry.actionType === "opened"),
+      false
+    );
+  } finally {
+    await server.cleanup();
+  }
+});
+
+test("HTTP integration deletes non-empty containers with explicit content handling", async () => {
   const server = await startTestServer();
 
   try {
@@ -647,9 +820,10 @@ test("HTTP integration deletes non-empty containers by promoting direct children
       server.baseUrl,
       `/api/containers/${containerAId}`,
       {
-        headers: {
-          Cookie: sessionCookie
-        },
+        body: JSON.stringify({
+          contentStrategy: "parent"
+        }),
+        headers: createJsonHeaders(sessionCookie),
         method: "DELETE"
       }
     );
@@ -726,6 +900,19 @@ test("HTTP integration deletes non-empty containers by promoting direct children
 
     assert.equal(item2Detail.response.status, 200);
     assert.equal(item2Detail.body.item.parentContainerId, containerBId);
+
+    const missingStrategy = await requestJson(
+      server.baseUrl,
+      `/api/containers/${containerBId}`,
+      {
+        headers: {
+          Cookie: sessionCookie
+        },
+        method: "DELETE"
+      }
+    );
+
+    assert.equal(missingStrategy.response.status, 400);
   } finally {
     await server.cleanup();
   }

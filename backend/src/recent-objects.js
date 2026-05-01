@@ -3,6 +3,12 @@ const { validateOwnedObject } = require("./validation");
 
 const DEFAULT_RECENT_OBJECT_LIMIT = 20;
 
+const ACTIVITY_LABEL_BY_ACTION = Object.freeze({
+  created: "Created",
+  deleted: "Deleted",
+  moved: "Moved"
+});
+
 function getRecentObjectById(database, recentObjectId) {
   return database
     .prepare(
@@ -46,6 +52,68 @@ function formatRecentObject(database, recentObject, object) {
     photoPath: object.photoPath,
     photoUrl,
     topLevel: pathInfo.topLevel
+  };
+}
+
+function getParentLocationSnapshot(database, parentContainerId) {
+  if (!parentContainerId) {
+    return "Top level";
+  }
+
+  const parentContainer = database
+    .prepare("SELECT id, userId, name, photoPath, parentContainerId FROM containers WHERE id = ?")
+    .get(parentContainerId);
+
+  if (!parentContainer) {
+    return "Unknown location";
+  }
+
+  return getContainerPathInfo(database, parentContainer).fullPath;
+}
+
+function getActivityObject(database, activity) {
+  if (activity.actionType === "deleted" || !activity.objectId) {
+    return null;
+  }
+
+  return getObjectForRecentEntry(
+    database,
+    activity.userId,
+    activity.objectType,
+    activity.objectId
+  );
+}
+
+function formatActivityLabel(actionType, objectType) {
+  const actionLabel = ACTIVITY_LABEL_BY_ACTION[actionType] || "Updated";
+  return `${actionLabel} ${objectType}`;
+}
+
+function formatRecentActivity(database, activity) {
+  const object = getActivityObject(database, activity);
+  const photoUrl = object && object.photoPath
+    ? `/api/photos/${activity.objectType}/${activity.objectId}?v=${encodeURIComponent(object.photoPath)}`
+    : null;
+
+  return {
+    actionType: activity.actionType,
+    activityLabel: formatActivityLabel(activity.actionType, activity.objectType),
+    canNavigate: Boolean(object),
+    fromLocation: activity.fromLocation,
+    isDeleted: activity.actionType === "deleted",
+    name: activity.objectName,
+    objectId: activity.objectId,
+    objectType: activity.objectType,
+    occurredAt: activity.createdAt,
+    openedAt: activity.createdAt,
+    photoPath: object ? object.photoPath : null,
+    photoUrl,
+    toLocation: activity.toLocation,
+    topLevel: object
+      ? (activity.objectType === "container"
+          ? getContainerPathInfo(database, object).topLevel
+          : getItemPathInfo(database, object).topLevel)
+      : false
   };
 }
 
@@ -96,8 +164,66 @@ function recordRecentObjectOpen(database, userId, objectType, objectId, options 
   });
 
   const recentObject = recordOpenTransaction();
+
   return {
     recentObject: formatRecentObject(database, recentObject, object)
+  };
+}
+
+function recordRecentActivity(database, userId, activity) {
+  database
+    .prepare(
+      `
+        INSERT INTO recent_activity (
+          userId,
+          actionType,
+          objectType,
+          objectId,
+          objectName,
+          fromLocation,
+          toLocation
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `
+    )
+    .run(
+      userId,
+      activity.actionType,
+      activity.objectType,
+      activity.objectId || null,
+      activity.objectName,
+      activity.fromLocation || null,
+      activity.toLocation || null
+    );
+}
+
+function listRecentActivity(database, userId, options = {}) {
+  const limit = normalizeRecentObjectLimit(options.limit);
+  const activities = database
+    .prepare(
+      `
+        SELECT
+          id,
+          userId,
+          actionType,
+          objectType,
+          objectId,
+          objectName,
+          fromLocation,
+          toLocation,
+          createdAt
+        FROM recent_activity
+        WHERE userId = ? AND actionType != 'opened'
+        ORDER BY createdAt DESC, id DESC
+        LIMIT ?
+      `
+    )
+    .all(userId, limit)
+    .map((activity) => formatRecentActivity(database, activity));
+
+  return {
+    limit,
+    recentObjects: activities
   };
 }
 
@@ -180,6 +306,9 @@ function listRecentObjects(database, userId, options = {}) {
 
 module.exports = {
   DEFAULT_RECENT_OBJECT_LIMIT,
+  getParentLocationSnapshot,
+  listRecentActivity,
   listRecentObjects,
+  recordRecentActivity,
   recordRecentObjectOpen
 };

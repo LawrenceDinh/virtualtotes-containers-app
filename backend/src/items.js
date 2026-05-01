@@ -5,6 +5,11 @@ const {
   validateParentContainerAssignment
 } = require("./validation");
 const { getItemPathInfo } = require("./paths");
+const { deleteStoredPhotoIfPresent } = require("./photos");
+const {
+  getParentLocationSnapshot,
+  recordRecentActivity
+} = require("./recent-objects");
 
 const itemSelectColumns = `
   id,
@@ -34,7 +39,7 @@ function getItemById(database, itemId) {
 }
 
 function buildItemDetail(database, item) {
-  const { currentParentContainer, fullPath, topLevel } = getItemPathInfo(
+  const { currentParentContainer, fullPath, path, topLevel } = getItemPathInfo(
     database,
     item
   );
@@ -43,6 +48,7 @@ function buildItemDetail(database, item) {
     item,
     topLevel,
     fullPath,
+    path,
     currentParentContainer
   };
 }
@@ -75,8 +81,17 @@ function createItem(database, userId, payload, parentContainerId) {
       validatedPayload.parentContainerId
     );
 
+  const item = getItemById(database, Number(result.lastInsertRowid));
+  recordRecentActivity(database, userId, {
+    actionType: "created",
+    objectId: item.id,
+    objectName: item.name,
+    objectType: "item",
+    toLocation: getParentLocationSnapshot(database, item.parentContainerId)
+  });
+
   return {
-    item: getItemById(database, Number(result.lastInsertRowid))
+    item
   };
 }
 
@@ -192,10 +207,15 @@ function moveItem(database, itemId, userId, payload) {
   }
 
   const item = validateOwnedObject(database, "item", itemId, userId);
+  const fromLocation = getParentLocationSnapshot(database, item.parentContainerId);
   const destinationParent = validateParentContainerAssignment(
     database,
     payload.parentContainerId,
     userId
+  );
+  const toLocation = getParentLocationSnapshot(
+    database,
+    destinationParent ? destinationParent.id : null
   );
 
   database
@@ -211,13 +231,35 @@ function moveItem(database, itemId, userId, payload) {
     .run(destinationParent ? destinationParent.id : null, item.id);
 
   const updatedItem = getItemById(database, item.id);
+  recordRecentActivity(database, userId, {
+    actionType: "moved",
+    fromLocation,
+    objectId: item.id,
+    objectName: item.name,
+    objectType: "item",
+    toLocation
+  });
+
   return buildItemDetail(database, updatedItem);
 }
 
 function deleteItem(database, itemId, userId) {
   const item = validateOwnedObject(database, "item", itemId, userId);
+  const fromLocation = getParentLocationSnapshot(database, item.parentContainerId);
 
   database.prepare("DELETE FROM items WHERE id = ?").run(item.id);
+
+  recordRecentActivity(database, userId, {
+    actionType: "deleted",
+    fromLocation,
+    objectId: item.id,
+    objectName: item.name,
+    objectType: "item"
+  });
+
+  if (item.photoPath) {
+    deleteStoredPhotoIfPresent(item.photoPath);
+  }
 
   return {
     success: true

@@ -41,6 +41,19 @@ CREATE TABLE IF NOT EXISTS recent_objects (
   FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS recent_activity (
+  id INTEGER PRIMARY KEY,
+  userId INTEGER NOT NULL,
+  actionType TEXT NOT NULL CHECK (actionType IN ('created', 'moved', 'deleted', 'opened')),
+  objectType TEXT NOT NULL CHECK (objectType IN ('container', 'item')),
+  objectId INTEGER,
+  objectName TEXT NOT NULL,
+  fromLocation TEXT,
+  toLocation TEXT,
+  createdAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_containers_user_id
   ON containers(userId);
 
@@ -71,6 +84,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_items_qr_code_unique
 
 CREATE INDEX IF NOT EXISTS idx_recent_objects_user_id_opened_at
   ON recent_objects(userId, openedAt DESC);
+
+CREATE INDEX IF NOT EXISTS idx_recent_activity_user_id_created_at
+  ON recent_activity(userId, createdAt DESC, id DESC);
 
 -- Phase-1 QR strategy:
 -- 1. Application logic still validates QR ownership and duplicate intent.

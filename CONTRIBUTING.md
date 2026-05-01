@@ -25,7 +25,7 @@ npm test
 
 ```bash
 git clone <repo-url>
-cd prototype-containers-app/backend
+cd virtualtotes-containers-app/backend
 npm install
 npm start
 # app: http://localhost:3000
@@ -67,10 +67,8 @@ git config commit.template .gitmessage
 
 This helps maintain a clear history and makes releases easier to construct.
 
-- Open an Issue for questions or to request repository-level changes.
 5. Support
 ----------
-- Open an Issue for questions or to request repository-level changes.
 - Open an Issue for questions or to request repository-level changes.
 
 Thank you for helping improve VirtualTotes.

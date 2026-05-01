@@ -13,6 +13,9 @@ Components
 - Authentication: single private account model with password hashing and server-issued session cookie. Session cookie options are set to reasonably conservative defaults for LAN use.
 - QR flow: Each object (container or item) may have an associated `qrCode`. Scanning a QR triggers lookup to open, link, or create an object. QR uniqueness is enforced by the backend.
 - Search: supported by simple SQL queries against the SQLite DB (see `backend/src/search.js`).
+- Inventory overview: `backend/src/inventory-overview.js` returns owned object counts, item/container lists, and relationship paths for the overview page.
+- Recent activity: `backend/src/recent-objects.js` stores recent create, move, and delete activity with object name/location snapshots. Legacy opened-object tracking remains separate and is not shown as activity.
+- Container deletion: `backend/src/containers.js` requires an explicit content strategy for non-empty container deletion and moves only direct children inside a transaction.
 - Backup/restore: local scripts `backend/src/backup-local.js` and `backend/src/restore-local.js` copy the DB and photos into a timestamped `backups/` folder and produce a `manifest.json`.
 
 Runtime configuration
@@ -40,6 +43,6 @@ Security notes
 
 Where to look in the code
 -------------------------
-- API surface and services: `backend/src/*` (auth, containers, items, photos, qr, search, recent-objects).
+- API surface and services: `backend/src/*` (auth, containers, items, photos, qr, search, recent-objects, inventory-overview).
 - Schema and migrations: `backend/src/schema.sql`.
 - Backup/restore: `backend/src/backup-local.js`, `backend/src/restore-local.js`.

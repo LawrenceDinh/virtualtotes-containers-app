@@ -120,6 +120,32 @@ test("create top-level container, create child container, and list top-level con
       topLevelContainers.containers.map((container) => container.name),
       ["Empty Bin", "Garage Tote", "Seasonal Storage"]
     );
+    assert.deepEqual(
+      database
+        .prepare(
+          `
+            SELECT actionType, objectType, objectName, toLocation
+            FROM recent_activity
+            WHERE userId = 1
+            ORDER BY id ASC
+          `
+        )
+        .all(),
+      [
+        {
+          actionType: "created",
+          objectType: "container",
+          objectName: "Seasonal Storage",
+          toLocation: "Top level"
+        },
+        {
+          actionType: "created",
+          objectType: "container",
+          objectName: "Holiday Lights",
+          toLocation: "Garage Tote"
+        }
+      ]
+    );
 
     assertHttpError(
       () =>
@@ -149,6 +175,15 @@ test("getContainerDetail returns container info, path, children, and counts", ()
       ["Garage Tote"]
     );
     assert.deepEqual(
+      rootDetail.relationshipPaths.map((relationshipPath) => relationshipPath.fullPath),
+      [
+        "Garage Tote",
+        "Shelf Bin > Garage Tote",
+        "Zip Ties > Shelf Bin > Garage Tote",
+        "Packing Tape > Garage Tote"
+      ]
+    );
+    assert.deepEqual(
       rootDetail.childContainers.map((container) => container.name),
       ["Shelf Bin"]
     );
@@ -160,6 +195,10 @@ test("getContainerDetail returns container info, path, children, and counts", ()
     assert.equal(rootDetail.subcontainerCount, 1);
 
     assert.equal(childDetail.fullPath, "Shelf Bin > Garage Tote");
+    assert.deepEqual(
+      childDetail.relationshipPaths.map((relationshipPath) => relationshipPath.fullPath),
+      ["Shelf Bin > Garage Tote", "Zip Ties > Shelf Bin > Garage Tote"]
+    );
     assert.deepEqual(
       childDetail.childItems.map((item) => item.name),
       ["Zip Ties"]
@@ -283,6 +322,34 @@ test("moveContainer updates parentContainerId and blocks circular nesting", () =
 
     assert.equal(movedIntoEmptyBin.container.parentContainerId, 4);
     assert.equal(movedIntoEmptyBin.fullPath, "Shelf Bin > Empty Bin");
+    assert.deepEqual(
+      database
+        .prepare(
+          `
+            SELECT actionType, objectType, objectName, fromLocation, toLocation
+            FROM recent_activity
+            WHERE userId = 1
+            ORDER BY id ASC
+          `
+        )
+        .all(),
+      [
+        {
+          actionType: "moved",
+          objectType: "container",
+          objectName: "Shelf Bin",
+          fromLocation: "Garage Tote",
+          toLocation: "Top level"
+        },
+        {
+          actionType: "moved",
+          objectType: "container",
+          objectName: "Shelf Bin",
+          fromLocation: "Top level",
+          toLocation: "Empty Bin"
+        }
+      ]
+    );
 
     assertHttpError(
       () =>
@@ -317,13 +384,33 @@ test("deleteContainer deletes empty containers", () => {
         .get().count,
       0
     );
+    assert.deepEqual(
+      database
+        .prepare(
+          `
+            SELECT actionType, objectType, objectId, objectName, fromLocation
+            FROM recent_activity
+            WHERE userId = 1
+          `
+        )
+        .all(),
+      [
+        {
+          actionType: "deleted",
+          objectType: "container",
+          objectId: 4,
+          objectName: "Empty Bin",
+          fromLocation: "Top level"
+        }
+      ]
+    );
 
   } finally {
     database.close();
   }
 });
 
-test("deleteContainer promotes direct children of a top-level container", () => {
+test("deleteContainer moves direct children of a top-level container to top level", () => {
   const database = createTestDatabase();
 
   try {
@@ -334,9 +421,14 @@ test("deleteContainer promotes direct children of a top-level container", () => 
       .prepare("UPDATE items SET photoPath = ? WHERE id = ?")
       .run("child-item.jpg", 1);
 
-    assert.deepEqual(deleteContainer(database, 1, 1), {
-      success: true
-    });
+    assert.deepEqual(
+      deleteContainer(database, 1, 1, {
+        contentStrategy: "topLevel"
+      }),
+      {
+        success: true
+      }
+    );
 
     assert.equal(
       database
@@ -383,7 +475,7 @@ test("deleteContainer promotes direct children of a top-level container", () => 
   }
 });
 
-test("deleteContainer promotes direct children of a nested container only one level", () => {
+test("deleteContainer moves direct children of a nested container to its parent only one level", () => {
   const database = createTestDatabase();
 
   try {
@@ -408,9 +500,14 @@ test("deleteContainer promotes direct children of a nested container only one le
       )
       .run();
 
-    assert.deepEqual(deleteContainer(database, 2, 1), {
-      success: true
-    });
+    assert.deepEqual(
+      deleteContainer(database, 2, 1, {
+        contentStrategy: "parent"
+      }),
+      {
+        success: true
+      }
+    );
 
     assert.equal(
       database
@@ -448,6 +545,157 @@ test("deleteContainer promotes direct children of a nested container only one le
   }
 });
 
+test("deleteContainer moves all direct children to a selected destination", () => {
+  const database = createTestDatabase();
+
+  try {
+    database
+      .prepare(
+        `
+          INSERT INTO containers (id, userId, name, qrCode, parentContainerId)
+          VALUES (5, 1, 'Destination Bin', 'qr-destination-bin', NULL)
+        `
+      )
+      .run();
+
+    assert.deepEqual(
+      deleteContainer(database, 1, 1, {
+        contentStrategy: "container",
+        destinationParentContainerId: 5
+      }),
+      {
+        success: true
+      }
+    );
+
+    assert.equal(
+      database.prepare("SELECT parentContainerId FROM containers WHERE id = 2").get()
+        .parentContainerId,
+      5
+    );
+    assert.equal(
+      database.prepare("SELECT parentContainerId FROM items WHERE id = 1").get()
+        .parentContainerId,
+      5
+    );
+    assert.equal(
+      database.prepare("SELECT parentContainerId FROM items WHERE id = 2").get()
+        .parentContainerId,
+      2
+    );
+  } finally {
+    database.close();
+  }
+});
+
+test("deleteContainer supports per-child destinations and requires all direct children", () => {
+  const database = createTestDatabase();
+
+  try {
+    database
+      .prepare(
+        `
+          INSERT INTO containers (id, userId, name, qrCode, parentContainerId)
+          VALUES (5, 1, 'Destination Bin', 'qr-destination-bin', NULL)
+        `
+      )
+      .run();
+
+    assertHttpError(
+      () =>
+        deleteContainer(database, 1, 1, {
+          childDestinations: [
+            {
+              objectId: 1,
+              objectType: "item",
+              parentContainerId: null
+            }
+          ],
+          contentStrategy: "custom"
+        }),
+      400,
+      "Every direct child"
+    );
+
+    assert.deepEqual(
+      deleteContainer(database, 1, 1, {
+        childDestinations: [
+          {
+            objectId: 2,
+            objectType: "container",
+            parentContainerId: 5
+          },
+          {
+            objectId: 1,
+            objectType: "item",
+            parentContainerId: null
+          }
+        ],
+        contentStrategy: "custom"
+      }),
+      {
+        success: true
+      }
+    );
+
+    assert.equal(
+      database.prepare("SELECT parentContainerId FROM containers WHERE id = 2").get()
+        .parentContainerId,
+      5
+    );
+    assert.equal(
+      database.prepare("SELECT parentContainerId FROM items WHERE id = 1").get()
+        .parentContainerId,
+      null
+    );
+    assert.equal(
+      database.prepare("SELECT parentContainerId FROM items WHERE id = 2").get()
+        .parentContainerId,
+      2
+    );
+  } finally {
+    database.close();
+  }
+});
+
+test("deleteContainer rejects invalid destinations", () => {
+  const database = createTestDatabase();
+
+  try {
+    assertHttpError(
+      () =>
+        deleteContainer(database, 1, 1, {
+          contentStrategy: "container",
+          destinationParentContainerId: 1
+        }),
+      409,
+      "Deleted container"
+    );
+
+    assertHttpError(
+      () =>
+        deleteContainer(database, 1, 1, {
+          contentStrategy: "container",
+          destinationParentContainerId: 3
+        }),
+      404,
+      "Parent container not found"
+    );
+
+    assertHttpError(
+      () =>
+        deleteContainer(database, 1, 1, {
+          contentStrategy: "container",
+          destinationParentContainerId: 2
+        }),
+      409,
+      "inside itself|descendants"
+    );
+  } finally {
+    database.close();
+  }
+});
+
 test("deleteContainer removes only the deleted container photo", () => {
   withTemporaryPhotoPath((photoPath) => {
     const database = createTestDatabase();
@@ -462,9 +710,14 @@ test("deleteContainer removes only the deleted container photo", () => {
         .prepare("UPDATE containers SET photoPath = ? WHERE id = ?")
         .run("child-container.jpg", 2);
 
-      assert.deepEqual(deleteContainer(database, 1, 1), {
-        success: true
-      });
+      assert.deepEqual(
+        deleteContainer(database, 1, 1, {
+          contentStrategy: "parent"
+        }),
+        {
+          success: true
+        }
+      );
 
       assert.equal(fs.existsSync(path.join(photoPath, "deleted-container.jpg")), false);
       assert.equal(fs.existsSync(path.join(photoPath, "child-container.jpg")), true);

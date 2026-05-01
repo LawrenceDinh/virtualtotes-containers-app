@@ -126,6 +126,8 @@ async function bootstrapFrontendHarness({
   );
   window.confirm = () => confirmResult;
   window.scrollTo = () => {};
+  window.URL.createObjectURL = () => "blob:object-form-photo-preview";
+  window.URL.revokeObjectURL = () => {};
 
   if (window.HTMLMediaElement && window.HTMLMediaElement.prototype) {
     window.HTMLMediaElement.prototype.pause = () => {};
@@ -157,6 +159,24 @@ function submitForm(window, form) {
       cancelable: true
     })
   );
+}
+
+function selectFile(window, input, { name, type }) {
+  const file = new window.File(["fake image data"], name, {
+    type
+  });
+
+  Object.defineProperty(input, "files", {
+    configurable: true,
+    value: [file]
+  });
+  input.dispatchEvent(
+    new window.Event("change", {
+      bubbles: true
+    })
+  );
+
+  return file;
 }
 
 test("frontend smoke covers login happy path", async () => {
@@ -198,6 +218,7 @@ test("frontend smoke covers login happy path", async () => {
               name: "Garage Tote",
               objectId: 1,
               objectType: "container",
+              openedAt: "2026-04-28T20:06:00.000Z",
               pathContext: "Garage Tote",
               photoPath: "container-1-photo.jpg",
               photoUrl: "/api/photos/container/1?v=container-1-photo.jpg",
@@ -207,6 +228,7 @@ test("frontend smoke covers login happy path", async () => {
               name: "Packing Tape",
               objectId: 2,
               objectType: "item",
+              openedAt: "2026-04-28T20:05:00.000Z",
               path: [
                 {
                   id: 2,
@@ -284,50 +306,92 @@ test("frontend smoke covers recent objects rendering", async () => {
         createJsonResponse(200, {
           recentObjects: [
             {
-              name: "Garage Tote",
-              objectId: 1,
-              objectType: "container",
-              pathContext: "Garage Tote",
-              photoPath: "container-1-photo.jpg",
-              photoUrl: "/api/photos/container/1?v=container-1-photo.jpg",
-              topLevel: true
-            },
-            {
-              name: "Packing Tape",
-              objectId: 2,
+              actionType: "deleted",
+              activityLabel: "Deleted item",
+              canNavigate: false,
+              fromLocation: "Garage Tote",
+              isDeleted: true,
+              name: "Miata",
+              objectId: 99,
               objectType: "item",
-              path: [
-                {
-                  id: 2,
-                  name: "Packing Tape",
-                  objectType: "item"
-                },
-                {
-                  id: 1,
-                  name: "Garage Tote",
-                  objectType: "container"
-                }
-              ],
-              pathContext: "Packing Tape > Garage Tote",
-              photoPath: "item-2-photo.jpg",
-              photoUrl: "/api/photos/item/2?v=item-2-photo.jpg",
-              topLevel: false
+              occurredAt: "2026-04-28T20:06:00.000Z",
+              photoPath: null
             },
             {
+              actionType: "moved",
+              activityLabel: "Moved container",
+              canNavigate: true,
+              fromLocation: "Top level",
               name: "Basement Bin",
               objectId: 3,
               objectType: "container",
-              pathContext: "Basement Bin",
+              occurredAt: "2026-04-28T20:05:00.000Z",
               photoPath: null,
+              toLocation: "Garage Tote"
+            },
+            {
+              actionType: "created",
+              activityLabel: "Created item",
+              canNavigate: true,
+              name: "Packing Tape",
+              objectId: 2,
+              objectType: "item",
+              occurredAt: "2026-04-28T20:04:00.000Z",
+              photoPath: "item-2-photo.jpg",
+              photoUrl: "/api/photos/item/2?v=item-2-photo.jpg",
+              toLocation: "Garage Tote"
+            },
+            {
+              actionType: "moved",
+              activityLabel: "Moved container",
+              canNavigate: true,
+              name: "Garage Tote",
+              objectId: 1,
+              objectType: "container",
+              fromLocation: "Shelf",
+              occurredAt: "2026-04-28T20:03:00.000Z",
+              pathContext: "Garage Tote",
+              photoPath: "container-1-photo.jpg",
+              photoUrl: "/api/photos/container/1?v=container-1-photo.jpg",
+              toLocation: "Top level",
               topLevel: true
             },
             {
+              actionType: "deleted",
+              activityLabel: "Deleted container",
+              canNavigate: false,
+              fromLocation: "Top level",
+              isDeleted: true,
+              name: "Old Box",
+              objectId: 8,
+              objectType: "container",
+              occurredAt: "2026-04-28T20:02:00.000Z",
+              photoPath: null,
+              topLevel: false
+            },
+            {
+              actionType: "created",
+              activityLabel: "Created item",
+              canNavigate: true,
               name: "Loose Batteries",
               objectId: 4,
               objectType: "item",
+              occurredAt: "2026-04-28T20:01:00.000Z",
               pathContext: "Loose Batteries",
               photoPath: null,
+              toLocation: "Top level",
               topLevel: true
+            },
+            {
+              actionType: "created",
+              activityLabel: "Created container",
+              canNavigate: true,
+              name: "Winter Tote",
+              objectId: 7,
+              objectType: "container",
+              occurredAt: "2026-04-28T20:00:00.000Z",
+              photoPath: null,
+              toLocation: "Top level"
             }
           ]
         })
@@ -346,43 +410,95 @@ test("frontend smoke covers recent objects rendering", async () => {
       );
 
       assert.equal(document.querySelector("[data-home-sections]").hidden, false);
-      assert.equal(document.querySelector("[data-recent-summary]").textContent, "4 recent objects");
-      assert.equal(recentLinks.length, 4);
-      assert.equal(recentLinks[0].getAttribute("href"), "/containers/1");
-      assert.equal(recentLinks[0].querySelector(".object-name").textContent, "Garage Tote");
       assert.equal(
-        recentLinks[0].querySelector(".object-context").textContent,
-        "Top level"
+        document.querySelector("[data-recent-summary]").textContent,
+        "Showing 5 of 7 recent activities"
       );
       assert.equal(
-        recentLinks[0].querySelector(".object-thumbnail-image").getAttribute("src"),
-        "/api/photos/container/1?v=container-1-photo.jpg"
+        document.querySelector("[data-recent-toggle]").textContent,
+        "Show more"
       );
+      assert.equal(document.querySelector("[data-recent-toggle]").hidden, false);
+      assert.match(document.querySelector(".home-view").textContent, /Recent Activity/);
+      assert.doesNotMatch(
+        document.querySelector(".home-view").textContent,
+        /Recent Objects/
+      );
+      assert.equal(recentRows.length, 5);
+      assert.equal(recentLinks.length, 3);
+      assert.match(recentRows[0].textContent, /Deleted item: Miata/);
+      assert.equal(recentRows[0].querySelector("[data-object-link]"), null);
+      assert.match(
+        recentRows[0].querySelector(".object-context").textContent,
+        /Was in Garage Tote/
+      );
+      assert.equal(recentLinks[0].getAttribute("href"), "/containers/3");
+      assert.match(recentRows[1].textContent, /Moved container: Basement Bin/);
+      assert.match(recentRows[1].textContent, /Top level → Garage Tote/);
       assert.equal(recentLinks[1].getAttribute("href"), "/items/2");
-      assert.equal(recentLinks[1].textContent, "Packing Tape");
+      assert.match(recentLinks[1].textContent, /Created item: Packing Tape/);
       assert.equal(
-        recentRows[1].querySelector(".object-context").textContent,
-        "Packing Tape > Garage Tote"
-      );
-      assert.equal(
-        recentRows[1]
-          .querySelector('.object-context [href="/containers/1"]')
-          .textContent,
-        "Garage Tote"
-      );
-      assert.equal(
-        recentRows[1].querySelector(".object-thumbnail-image").getAttribute("src"),
+        recentRows[2].querySelector(".object-thumbnail-image").getAttribute("src"),
         "/api/photos/item/2?v=item-2-photo.jpg"
       );
-      assert.equal(recentLinks[2].getAttribute("href"), "/containers/3");
+      assert.equal(recentLinks[2].getAttribute("href"), "/containers/1");
+      assert.match(recentLinks[2].textContent, /Moved container: Garage Tote/);
       assert.equal(
-        recentLinks[2].querySelector(".object-thumbnail-placeholder").textContent,
-        "No photo"
+        recentRows[3].querySelector(".object-thumbnail-image").getAttribute("src"),
+        "/api/photos/container/1?v=container-1-photo.jpg"
       );
-      assert.equal(recentLinks[3].getAttribute("href"), "/items/4");
+      assert.doesNotMatch(
+        document.querySelector("[data-recent-objects]").textContent,
+        /Opened/
+      );
+      assert.match(recentRows[4].textContent, /Deleted container: Old Box/);
       assert.equal(
-        recentLinks[3].querySelector(".object-thumbnail-placeholder").textContent,
-        "No photo"
+        recentRows[4].querySelector("[data-object-link]"),
+        null
+      );
+    });
+
+    document.querySelector("[data-recent-toggle]").click();
+
+    await waitFor(() => {
+      const expandedLinks = Array.from(
+        document.querySelectorAll("[data-recent-objects] [data-object-link]")
+      );
+      const expandedRows = Array.from(
+        document.querySelectorAll("[data-recent-objects] li")
+      );
+
+      assert.equal(expandedRows.length, 7);
+      assert.equal(expandedLinks.length, 5);
+      assert.equal(expandedLinks[4].getAttribute("href"), "/containers/7");
+      assert.equal(
+        document.querySelector("[data-recent-toggle]").textContent,
+        "Show less"
+      );
+      assert.equal(
+        document
+          .querySelector("[data-recent-objects]")
+          .classList.contains("recent-activity-list-expanded"),
+        true
+      );
+    });
+
+    document.querySelector("[data-recent-toggle]").click();
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelectorAll("[data-recent-objects] li").length,
+        5
+      );
+      assert.equal(
+        document.querySelector("[data-recent-toggle]").textContent,
+        "Show more"
+      );
+      assert.equal(
+        document
+          .querySelector("[data-recent-objects]")
+          .classList.contains("recent-activity-list-expanded"),
+        false
       );
     });
 
@@ -616,6 +732,7 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
               id: 1,
               name: "Garage Tote",
               parentContainerId: null,
+              photoPath: "garage-tote.jpg",
               topLevel: true
             },
             {
@@ -635,6 +752,7 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
                 }
               ],
               parentContainerId: 1,
+              photoPath: null,
               topLevel: false
             }
           ],
@@ -648,6 +766,7 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
               id: 3,
               name: "Loose Batteries",
               parentContainerId: null,
+              photoPath: null,
               topLevel: true
             },
             {
@@ -672,6 +791,7 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
                 }
               ],
               parentContainerId: 2,
+              photoPath: "screwdriver.jpg",
               topLevel: false
             }
           ],
@@ -754,9 +874,57 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
         document.querySelector("[data-inventory-items]").textContent,
         /Screwdriver/
       );
+      assert.doesNotMatch(
+        document.querySelector("[data-inventory-items]").textContent,
+        /Garage Tote|Inner Bin|>/
+      );
+      assert.equal(
+        document.querySelector('[data-inventory-items] [data-object-thumbnail] img')
+          .getAttribute("src"),
+        "/api/photos/item/4?v=screwdriver.jpg"
+      );
+      assert.equal(
+        document.querySelector("[data-inventory-items] [data-object-thumbnail]")
+          .textContent,
+        "Item"
+      );
       assert.equal(
         document.querySelector("[data-inventory-containers] .object-name").textContent,
         "Garage Tote"
+      );
+      assert.doesNotMatch(
+        document.querySelector("[data-inventory-containers]").textContent,
+        />|Top level/
+      );
+      assert.equal(
+        document
+          .querySelector('[data-inventory-containers] [data-object-thumbnail] img')
+          .getAttribute("src"),
+        "/api/photos/container/1?v=garage-tote.jpg"
+      );
+      assert.match(
+        document.querySelector("[data-inventory-paths]").textContent,
+        /Item Paths/
+      );
+      assert.match(
+        document.querySelector("[data-inventory-paths]").textContent,
+        /Container Paths/
+      );
+      assert.match(
+        document.querySelector("[data-inventory-item-paths]").textContent,
+        /Screwdriver/
+      );
+      assert.doesNotMatch(
+        document.querySelector("[data-inventory-item-paths]").textContent,
+        /Top Level > Garage Tote/
+      );
+      assert.match(
+        document.querySelector("[data-inventory-container-paths]").textContent,
+        /Garage Tote/
+      );
+      assert.doesNotMatch(
+        document.querySelector("[data-inventory-container-paths]").textContent,
+        /Screwdriver/
       );
       assert.match(
         document.querySelector("[data-inventory-paths]").textContent,
@@ -820,7 +988,14 @@ test("frontend smoke renders empty inventory overview states", async () => {
         document.querySelector("[data-inventory-containers-empty]").hidden,
         false
       );
-      assert.equal(document.querySelector("[data-inventory-paths-empty]").hidden, false);
+      assert.equal(
+        document.querySelector("[data-inventory-item-paths-empty]").hidden,
+        false
+      );
+      assert.equal(
+        document.querySelector("[data-inventory-container-paths-empty]").hidden,
+        false
+      );
     });
   } finally {
     harness.cleanup();
@@ -986,23 +1161,134 @@ test("frontend smoke covers opening a container route", async () => {
         }),
       "GET /api/containers/1": () =>
         createJsonResponse(200, {
-          childContainers: [],
+          childContainers: [
+            {
+              id: 3,
+              name: "Shelf Bin",
+              parentContainerId: 1,
+              photoPath: "container-3-photo.jpg"
+            },
+            {
+              id: 4,
+              name: "Parts Box",
+              parentContainerId: 1,
+              photoPath: null
+            }
+          ],
           childItems: [
             {
               id: 2,
-              name: "Packing Tape"
+              name: "Packing Tape",
+              parentContainerId: 1,
+              photoPath: "item-2-photo.jpg"
+            },
+            {
+              id: 5,
+              name: "Zip Ties",
+              parentContainerId: 1,
+              photoPath: null
             }
           ],
           container: {
             id: 1,
             name: "Garage Tote",
             parentContainerId: null,
-            photoPath: null,
+            photoPath: "container-1-photo.jpg",
             qrCode: "qr-garage"
           },
           fullPath: "Garage Tote",
-          itemCount: 1,
-          subcontainerCount: 0
+          path: [
+            {
+              id: 1,
+              name: "Garage Tote",
+              objectType: "container",
+              photoPath: "container-1-photo.jpg"
+            }
+          ],
+          relationshipPaths: [
+            {
+              fullPath: "Garage Tote",
+              objectId: 1,
+              objectType: "container",
+              path: [
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container",
+                  photoPath: "container-1-photo.jpg"
+                }
+              ],
+              topLevel: true
+            },
+            {
+              fullPath: "Shelf Bin > Garage Tote",
+              objectId: 3,
+              objectType: "container",
+              path: [
+                {
+                  id: 3,
+                  name: "Shelf Bin",
+                  objectType: "container",
+                  photoPath: "container-3-photo.jpg"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container",
+                  photoPath: "container-1-photo.jpg"
+                }
+              ],
+              topLevel: false
+            },
+            {
+              fullPath: "Parts Box > Garage Tote",
+              objectId: 4,
+              objectType: "container",
+              path: [
+                {
+                  id: 4,
+                  name: "Parts Box",
+                  objectType: "container",
+                  photoPath: null
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container",
+                  photoPath: "container-1-photo.jpg"
+                }
+              ],
+              topLevel: false
+            },
+            {
+              fullPath: "Miata > Shelf Bin > Garage Tote",
+              objectId: 6,
+              objectType: "item",
+              path: [
+                {
+                  id: 6,
+                  name: "Miata",
+                  objectType: "item",
+                  photoPath: "item-6-photo.jpg"
+                },
+                {
+                  id: 3,
+                  name: "Shelf Bin",
+                  objectType: "container",
+                  photoPath: "container-3-photo.jpg"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container",
+                  photoPath: "container-1-photo.jpg"
+                }
+              ],
+              topLevel: false
+            }
+          ],
+          itemCount: 2,
+          subcontainerCount: 2
         })
     }
   });
@@ -1016,14 +1302,558 @@ test("frontend smoke covers opening a container route", async () => {
         document.querySelector("[data-container-page-name]").textContent,
         "Garage Tote"
       );
+      const pathRows = Array.from(
+        document.querySelectorAll("[data-container-full-path] .detail-path-row")
+      );
+      assert.deepEqual(
+        pathRows.map((row) => row.textContent),
+        [
+          "Garage Tote",
+          "Shelf Bin > Garage Tote",
+          "Parts Box > Garage Tote",
+          "Miata > Shelf Bin > Garage Tote"
+        ]
+      );
       assert.equal(
-        document.querySelector("[data-container-full-path]").textContent,
+        document
+          .querySelector('[data-container-full-path] [href="/containers/1"]')
+          .textContent,
         "Garage Tote"
+      );
+      assert.equal(
+        document
+          .querySelector("[data-container-full-path] [data-path-segment-icon]")
+          .dataset.pathSegmentIcon,
+        "container"
+      );
+      assert.equal(
+        document
+          .querySelector('[data-container-full-path] [href="/containers/1"] img')
+          .getAttribute("src"),
+        "/api/photos/container/1?v=container-1-photo.jpg"
+      );
+      assert.equal(
+        document
+          .querySelector('[data-container-full-path] [href="/items/6"]')
+          .textContent,
+        "Miata"
+      );
+      assert.equal(
+        document
+          .querySelector('[data-container-full-path] [href="/items/6"] img')
+          .getAttribute("src"),
+        "/api/photos/item/6?v=item-6-photo.jpg"
+      );
+      assert.equal(
+        document
+          .querySelector('[data-container-full-path] [href="/containers/4"]')
+          .textContent,
+        "Parts Box"
+      );
+      assert.equal(
+        document
+          .querySelector('[data-container-full-path] [href="/containers/4"] img'),
+        null
       );
       assert.equal(
         document.querySelector("[data-container-qr-status]").textContent,
         "QR linked to this object."
       );
+      assert.equal(
+        document
+          .querySelector(
+            '[data-container-child-containers] [href="/containers/3"] .object-thumbnail-image'
+          )
+          .getAttribute("src"),
+        "/api/photos/container/3?v=container-3-photo.jpg"
+      );
+      assert.equal(
+        document
+          .querySelector(
+            '[data-container-child-containers] [href="/containers/4"] .object-thumbnail-placeholder'
+          )
+          .textContent,
+        "Container"
+      );
+      assert.equal(
+        document
+          .querySelector(
+            '[data-container-child-items] [href="/items/2"] .object-thumbnail-image'
+          )
+          .getAttribute("src"),
+        "/api/photos/item/2?v=item-2-photo.jpg"
+      );
+      assert.equal(
+        document
+          .querySelector(
+            '[data-container-child-items] [href="/items/5"] .object-thumbnail-placeholder'
+          )
+          .textContent,
+        "Item"
+      );
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke renders clickable item detail paths with icons", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/items/2",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/items/2": () =>
+        createJsonResponse(200, {
+          currentParentContainer: {
+            id: 3,
+            name: "Shelf Bin"
+          },
+          fullPath: "Packing Tape > Shelf Bin > Garage Tote",
+          item: {
+            id: 2,
+            name: "Packing Tape",
+            parentContainerId: 3,
+            photoPath: "item-2-photo.jpg",
+            qrCode: null
+          },
+          path: [
+            {
+              id: 2,
+              name: "Packing Tape",
+              objectType: "item",
+              photoPath: "item-2-photo.jpg"
+            },
+            {
+              id: 3,
+              name: "Shelf Bin",
+              objectType: "container",
+              photoPath: null
+            },
+            {
+              id: 1,
+              name: "Garage Tote",
+              objectType: "container",
+              photoPath: "container-1-photo.jpg"
+            }
+          ],
+          topLevel: false
+        })
+    }
+  });
+
+  try {
+    const { document, window } = harness;
+    const navigations = [];
+
+    window.navigateTo = (path) => {
+      navigations.push(path);
+    };
+
+    await waitFor(() => {
+      assert.equal(document.querySelector("[data-item-page]").hidden, false);
+      assert.equal(
+        document.querySelector("[data-item-location-status]").textContent,
+        "Packing Tape > Shelf Bin > Garage Tote"
+      );
+    });
+
+    const locationNode = document.querySelector("[data-item-location-status]");
+    const links = Array.from(locationNode.querySelectorAll("[data-path-link]"));
+    const icons = Array.from(
+      locationNode.querySelectorAll("[data-path-segment-icon]")
+    );
+
+    assert.deepEqual(
+      links.map((link) => link.getAttribute("href")),
+      ["/items/2", "/containers/3", "/containers/1"]
+    );
+    assert.deepEqual(
+      icons.map((icon) => icon.dataset.pathSegmentIcon),
+      ["item", "container", "container"]
+    );
+    assert.equal(
+      links[0].querySelector("img").getAttribute("src"),
+      "/api/photos/item/2?v=item-2-photo.jpg"
+    );
+    assert.equal(links[1].querySelector("img"), null);
+    assert.equal(
+      links[2].querySelector("img").getAttribute("src"),
+      "/api/photos/container/1?v=container-1-photo.jpg"
+    );
+
+    links[0].dispatchEvent(
+      new window.MouseEvent("click", {
+        bubbles: true,
+        cancelable: true
+      })
+    );
+    links[1].dispatchEvent(
+      new window.MouseEvent("click", {
+        bubbles: true,
+        cancelable: true
+      })
+    );
+
+    assert.deepEqual(navigations, ["/items/2", "/containers/3"]);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke renders top-level item detail path as the item name", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/items/1",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/items/1": () =>
+        createJsonResponse(200, {
+          currentParentContainer: null,
+          fullPath: "Loose Batteries",
+          item: {
+            id: 1,
+            name: "Loose Batteries",
+            parentContainerId: null,
+            photoPath: null,
+            qrCode: null
+          },
+          path: [
+            {
+              id: 1,
+              name: "Loose Batteries",
+              objectType: "item"
+            }
+          ],
+          topLevel: true
+        })
+    }
+  });
+
+  try {
+    const { document } = harness;
+
+    await waitFor(() => {
+      assert.equal(document.querySelector("[data-item-page]").hidden, false);
+      assert.equal(
+        document.querySelector("[data-item-location-status]").textContent,
+        "Loose Batteries"
+      );
+      assert.equal(
+        document
+          .querySelector('[data-item-location-status] [href="/items/1"]')
+          .textContent,
+        "Loose Batteries"
+      );
+      assert.equal(
+        document
+          .querySelector("[data-item-location-status] [data-path-segment-icon]")
+          .dataset.pathSegmentIcon,
+        "item"
+      );
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke creates an item and uploads a selected photo afterward", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/items/new",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/containers/options": () =>
+        createJsonResponse(200, {
+          containers: []
+        }),
+      "POST /api/items": () =>
+        createJsonResponse(201, {
+          item: {
+            id: 7,
+            name: "New Item",
+            parentContainerId: null,
+            photoPath: null,
+            qrCode: null
+          }
+        }),
+      "POST /api/items/7/photo": ({ options }) => {
+        assert.equal(options.headers["Content-Type"], "image/png");
+        assert.equal(options.body.name, "new-item.png");
+        return createJsonResponse(200, {
+          item: {
+            id: 7,
+            name: "New Item",
+            photoPath: "item-7-photo.png"
+          }
+        });
+      }
+    }
+  });
+
+  try {
+    const { document, requestLog, window } = harness;
+    const navigations = [];
+
+    window.navigateTo = (path) => {
+      navigations.push(path);
+    };
+
+    await waitFor(() => {
+      assert.equal(document.querySelector("[data-object-form-page]").hidden, false);
+      assert.equal(
+        document.querySelector("[data-object-form-photo-status]").textContent,
+        "Choose a photo now, or add one later."
+      );
+    });
+
+    document.querySelector("[data-object-name-input]").value = "New Item";
+    const selectedFile = selectFile(
+      window,
+      document.querySelector("[data-object-form-photo-input]"),
+      {
+        name: "new-item.png",
+        type: "image/png"
+      }
+    );
+
+    assert.equal(selectedFile.name, "new-item.png");
+    assert.equal(
+      document.querySelector("[data-object-form-photo-status]").textContent,
+      "Photo selected: new-item.png"
+    );
+    assert.equal(
+      document.querySelector("[data-object-form-photo-image]").hidden,
+      false
+    );
+    assert.equal(
+      document.querySelector("[data-object-form-photo-image]").getAttribute("src"),
+      "blob:object-form-photo-preview"
+    );
+    assert.equal(
+      document.querySelector("[data-object-form-photo-image]").getAttribute("alt"),
+      "new-item.png preview"
+    );
+
+    submitForm(window, document.querySelector("[data-object-form]"));
+
+    await waitFor(() => {
+      assert.deepEqual(
+        requestLog.map((request) => request.key).filter((key) =>
+          key.startsWith("POST ")
+        ),
+        ["POST /api/items", "POST /api/items/7/photo"]
+      );
+      assert.deepEqual(navigations, ["/items/7"]);
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke creates a container and uploads a selected photo afterward", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/containers/new",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/containers/options": () =>
+        createJsonResponse(200, {
+          containers: []
+        }),
+      "POST /api/containers": () =>
+        createJsonResponse(201, {
+          container: {
+            id: 8,
+            name: "New Container",
+            parentContainerId: null,
+            photoPath: null,
+            qrCode: null
+          }
+        }),
+      "POST /api/containers/8/photo": ({ options }) => {
+        assert.equal(options.headers["Content-Type"], "image/jpeg");
+        assert.equal(options.body.name, "new-container.jpg");
+        return createJsonResponse(200, {
+          container: {
+            id: 8,
+            name: "New Container",
+            photoPath: "container-8-photo.jpg"
+          }
+        });
+      }
+    }
+  });
+
+  try {
+    const { document, requestLog, window } = harness;
+    const navigations = [];
+
+    window.navigateTo = (path) => {
+      navigations.push(path);
+    };
+
+    await waitFor(() => {
+      assert.equal(document.querySelector("[data-object-form-page]").hidden, false);
+    });
+
+    document.querySelector("[data-object-name-input]").value = "New Container";
+    selectFile(window, document.querySelector("[data-object-form-photo-input]"), {
+      name: "new-container.jpg",
+      type: "image/jpeg"
+    });
+    submitForm(window, document.querySelector("[data-object-form]"));
+
+    await waitFor(() => {
+      assert.deepEqual(
+        requestLog.map((request) => request.key).filter((key) =>
+          key.startsWith("POST ")
+        ),
+        ["POST /api/containers", "POST /api/containers/8/photo"]
+      );
+      assert.deepEqual(navigations, ["/containers/8"]);
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke does not upload a selected photo when create fails", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/items/new",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/containers/options": () =>
+        createJsonResponse(200, {
+          containers: []
+        }),
+      "POST /api/items": () =>
+        createJsonResponse(400, {
+          error: "name is invalid"
+        })
+    }
+  });
+
+  try {
+    const { document, requestLog, window } = harness;
+
+    await waitFor(() => {
+      assert.equal(document.querySelector("[data-object-form-page]").hidden, false);
+    });
+
+    document.querySelector("[data-object-name-input]").value = "New Item";
+    selectFile(window, document.querySelector("[data-object-form-photo-input]"), {
+      name: "new-item.png",
+      type: "image/png"
+    });
+    submitForm(window, document.querySelector("[data-object-form]"));
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-object-form-error]").textContent,
+        "name is invalid"
+      );
+      assert.deepEqual(
+        requestLog.map((request) => request.key).filter((key) =>
+          key.startsWith("POST ")
+        ),
+        ["POST /api/items"]
+      );
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke keeps created object when post-create photo upload fails", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/items/new",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/containers/options": () =>
+        createJsonResponse(200, {
+          containers: []
+        }),
+      "POST /api/items": () =>
+        createJsonResponse(201, {
+          item: {
+            id: 9,
+            name: "Created Item",
+            parentContainerId: null,
+            photoPath: null,
+            qrCode: null
+          }
+        }),
+      "POST /api/items/9/photo": () =>
+        createJsonResponse(413, {
+          error: "Photo is too large"
+        })
+    }
+  });
+
+  try {
+    const { document, requestLog, window } = harness;
+    const navigations = [];
+
+    window.navigateTo = (path) => {
+      navigations.push(path);
+    };
+
+    await waitFor(() => {
+      assert.equal(document.querySelector("[data-object-form-page]").hidden, false);
+    });
+
+    document.querySelector("[data-object-name-input]").value = "Created Item";
+    selectFile(window, document.querySelector("[data-object-form-photo-input]"), {
+      name: "too-large.png",
+      type: "image/png"
+    });
+    submitForm(window, document.querySelector("[data-object-form]"));
+
+    await waitFor(() => {
+      assert.match(
+        document.querySelector("[data-object-form-error]").textContent,
+        /Created item, but photo upload failed\. Photo is too large/
+      );
+      assert.deepEqual(
+        requestLog.map((request) => request.key).filter((key) =>
+          key.startsWith("POST ")
+        ),
+        ["POST /api/items", "POST /api/items/9/photo"]
+      );
+      assert.deepEqual(navigations, []);
     });
   } finally {
     harness.cleanup();
@@ -1304,6 +2134,18 @@ test("frontend smoke covers the container delete UI flow for a top-level contain
           itemCount: 0,
           subcontainerCount: 0
         }),
+      "GET /api/containers/options": () =>
+        createJsonResponse(200, {
+          containers: [
+            {
+              id: 1,
+              name: "Garage Tote",
+              parentContainerId: null,
+              fullPath: "Garage Tote",
+              topLevel: true
+            }
+          ]
+        }),
       "DELETE /api/containers/1": () =>
         createJsonResponse(200, {
           success: true
@@ -1331,11 +2173,27 @@ test("frontend smoke covers the container delete UI flow for a top-level contain
     document.querySelector("[data-container-delete]").click();
 
     await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-container-delete-panel]").hidden,
+        false
+      );
+      assert.match(
+        document.querySelector("[data-container-delete-panel]").textContent,
+        /Deleting this container will not delete its contents/
+      );
+    });
+
+    document.querySelector("[data-container-delete-confirm]").click();
+
+    await waitFor(() => {
       const deleteRequests = requestLog.filter(
         (request) => request.key === "DELETE /api/containers/1"
       );
 
       assert.equal(deleteRequests.length, 1);
+      assert.deepEqual(JSON.parse(deleteRequests[0].body), {
+        contentStrategy: "parent"
+      });
       assert.equal(
         document.querySelector("[data-container-action-note]").textContent,
         "Deleting container..."
@@ -1343,7 +2201,7 @@ test("frontend smoke covers the container delete UI flow for a top-level contain
     });
 
     assert.deepEqual(confirmations, [
-      'Delete "Garage Tote"? This will not delete its contents. Direct child items and containers will move up one level.'
+      'Delete "Garage Tote"? This will not delete its contents.'
     ]);
     await waitFor(() => {
       assert.deepEqual(navigations, ["/"]);
@@ -1391,6 +2249,32 @@ test("frontend smoke navigates to parent after deleting a nested container", asy
           itemCount: 1,
           subcontainerCount: 1
         }),
+      "GET /api/containers/options": () =>
+        createJsonResponse(200, {
+          containers: [
+            {
+              id: 1,
+              name: "Garage Tote",
+              parentContainerId: null,
+              fullPath: "Garage Tote",
+              topLevel: true
+            },
+            {
+              id: 2,
+              name: "Shelf Bin",
+              parentContainerId: 1,
+              fullPath: "Shelf Bin > Garage Tote",
+              topLevel: false
+            },
+            {
+              id: 3,
+              name: "Small Parts",
+              parentContainerId: 2,
+              fullPath: "Small Parts > Shelf Bin > Garage Tote",
+              topLevel: false
+            }
+          ]
+        }),
       "DELETE /api/containers/2": () =>
         createJsonResponse(200, {
           success: true
@@ -1419,14 +2303,72 @@ test("frontend smoke navigates to parent after deleting a nested container", asy
 
     await waitFor(() => {
       assert.equal(
-        requestLog.filter((request) => request.key === "DELETE /api/containers/2")
-          .length,
-        1
+        document.querySelector("[data-container-delete-panel]").hidden,
+        false
+      );
+      assert.match(
+        document.querySelector("[data-container-delete-child-list]").textContent,
+        /Container: Small Parts/
+      );
+      assert.match(
+        document.querySelector("[data-container-delete-child-list]").textContent,
+        /Item: Packing Tape/
+      );
+      assert.match(
+        document.querySelector("[data-container-delete-panel]").textContent,
+        /Move contents to parent/
+      );
+      assert.match(
+        document.querySelector("[data-container-delete-panel]").textContent,
+        /Move contents to top level/
+      );
+      assert.match(
+        document.querySelector("[data-container-delete-panel]").textContent,
+        /Move contents to another container/
+      );
+      assert.match(
+        document.querySelector("[data-container-delete-panel]").textContent,
+        /Choose destination per item\/container/
       );
     });
 
+    document.querySelector('[data-container-delete-mode="container"]').click();
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-container-delete-all-destination-field]").hidden,
+        false
+      );
+    });
+
+    document.querySelector('[data-container-delete-mode="custom"]').click();
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-container-delete-custom-list]").hidden,
+        false
+      );
+      assert.equal(
+        document.querySelectorAll("[data-container-delete-custom-list] select")
+          .length,
+        2
+      );
+    });
+
+    document.querySelector('[data-container-delete-mode="parent"]').click();
+    document.querySelector("[data-container-delete-confirm]").click();
+
+    await waitFor(() => {
+      const deleteRequests = requestLog.filter(
+        (request) => request.key === "DELETE /api/containers/2"
+      );
+
+      assert.equal(deleteRequests.length, 1);
+      assert.deepEqual(JSON.parse(deleteRequests[0].body), {
+        contentStrategy: "parent"
+      });
+    });
+
     assert.deepEqual(confirmations, [
-      'Delete "Shelf Bin"? This will not delete its contents. Direct child items and containers will move up one level.'
+      'Delete "Shelf Bin"? This will not delete its contents.'
     ]);
     await waitFor(() => {
       assert.deepEqual(navigations, ["/containers/1"]);

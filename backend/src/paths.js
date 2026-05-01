@@ -4,8 +4,47 @@ const containerPathSelectColumns = `
   id,
   userId,
   name,
+  photoPath,
   parentContainerId
 `;
+
+function formatContainerPathSegment(container) {
+  const segment = {
+    id: container.id,
+    name: container.name,
+    objectType: "container"
+  };
+
+  if (container.photoPath) {
+    segment.photoPath = container.photoPath;
+  }
+
+  return segment;
+}
+
+function formatItemPathSegment(item) {
+  const segment = {
+    id: item.id,
+    name: item.name,
+    objectType: "item"
+  };
+
+  if (item.photoPath) {
+    segment.photoPath = item.photoPath;
+  }
+
+  return segment;
+}
+
+function formatRelationshipPath(objectType, objectId, pathInfo) {
+  return {
+    objectId,
+    objectType,
+    fullPath: pathInfo.fullPath,
+    path: pathInfo.path,
+    topLevel: pathInfo.topLevel
+  };
+}
 
 function getContainerPathSegments(database, container) {
   const pathSegments = [];
@@ -17,6 +56,7 @@ function getContainerPathSegments(database, container) {
     id: container.id,
     userId: container.userId,
     name: container.name,
+    photoPath: container.photoPath,
     parentContainerId: container.parentContainerId
   };
 
@@ -26,11 +66,7 @@ function getContainerPathSegments(database, container) {
     }
 
     visitedContainerIds.add(currentContainer.id);
-    pathSegments.push({
-      id: currentContainer.id,
-      name: currentContainer.name,
-      objectType: "container"
-    });
+    pathSegments.push(formatContainerPathSegment(currentContainer));
 
     if (currentContainer.parentContainerId === null) {
       break;
@@ -62,11 +98,7 @@ function getItemPathInfo(database, item) {
       currentParentContainer: null,
       fullPath: item.name,
       path: [
-        {
-          id: item.id,
-          name: item.name,
-          objectType: "item"
-        }
+        formatItemPathSegment(item)
       ],
       topLevel: true
     };
@@ -96,11 +128,7 @@ function getItemPathInfo(database, item) {
 
   const containerPathInfo = getContainerPathInfo(database, currentParentContainer);
   const path = [
-    {
-      id: item.id,
-      name: item.name,
-      objectType: "item"
-    },
+    formatItemPathSegment(item),
     ...containerPathInfo.path
   ];
 
@@ -112,7 +140,79 @@ function getItemPathInfo(database, item) {
   };
 }
 
+function getContainerRelationshipPaths(database, container) {
+  const relationshipPaths = [
+    formatRelationshipPath(
+      "container",
+      container.id,
+      getContainerPathInfo(database, container)
+    )
+  ];
+  const visitedContainerIds = new Set([container.id]);
+  const childContainersStatement = database.prepare(
+    `
+      SELECT ${containerPathSelectColumns}
+      FROM containers
+      WHERE userId = ? AND parentContainerId = ?
+      ORDER BY name COLLATE NOCASE ASC, id ASC
+    `
+  );
+  const childItemsStatement = database.prepare(
+    `
+      SELECT
+        id,
+        userId,
+        name,
+        photoPath,
+        parentContainerId
+      FROM items
+      WHERE userId = ? AND parentContainerId = ?
+      ORDER BY name COLLATE NOCASE ASC, id ASC
+    `
+  );
+
+  function appendDescendantPaths(parentContainerId) {
+    const childContainers = childContainersStatement.all(
+      container.userId,
+      parentContainerId
+    );
+
+    for (const childContainer of childContainers) {
+      if (visitedContainerIds.has(childContainer.id)) {
+        throw createHttpError(409, "Container ancestry is invalid");
+      }
+
+      visitedContainerIds.add(childContainer.id);
+      relationshipPaths.push(
+        formatRelationshipPath(
+          "container",
+          childContainer.id,
+          getContainerPathInfo(database, childContainer)
+        )
+      );
+      appendDescendantPaths(childContainer.id);
+    }
+
+    const childItems = childItemsStatement.all(container.userId, parentContainerId);
+
+    for (const childItem of childItems) {
+      relationshipPaths.push(
+        formatRelationshipPath(
+          "item",
+          childItem.id,
+          getItemPathInfo(database, childItem)
+        )
+      );
+    }
+  }
+
+  appendDescendantPaths(container.id);
+
+  return relationshipPaths;
+}
+
 module.exports = {
+  getContainerRelationshipPaths,
   getContainerPathInfo,
   getItemPathInfo
 };

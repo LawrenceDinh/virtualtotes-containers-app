@@ -29,6 +29,7 @@ function formatContainerOverview(database, container) {
     id: container.id,
     name: container.name,
     parentContainerId: container.parentContainerId,
+    photoPath: container.photoPath,
     fullPath: pathInfo.fullPath,
     path: pathInfo.path,
     topLevel: pathInfo.topLevel
@@ -42,6 +43,7 @@ function formatItemOverview(database, item) {
     id: item.id,
     name: item.name,
     parentContainerId: item.parentContainerId,
+    photoPath: item.photoPath,
     fullPath: pathInfo.fullPath,
     path: pathInfo.path,
     topLevel: pathInfo.topLevel

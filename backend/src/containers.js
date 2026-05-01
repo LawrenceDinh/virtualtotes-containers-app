@@ -3,10 +3,15 @@ const {
   validateContainerDeletion,
   validateContainerMove,
   validateObjectPayload,
-  validateOwnedObject
+  validateOwnedObject,
+  validateParentContainerAssignment
 } = require("./validation");
-const { getContainerPathInfo } = require("./paths");
+const { getContainerPathInfo, getContainerRelationshipPaths } = require("./paths");
 const { deleteStoredPhotoIfPresent } = require("./photos");
+const {
+  getParentLocationSnapshot,
+  recordRecentActivity
+} = require("./recent-objects");
 
 const containerSelectColumns = `
   id,
@@ -79,8 +84,17 @@ function createContainer(database, userId, payload, parentContainerId) {
       validatedPayload.parentContainerId
     );
 
+  const container = getContainerById(database, Number(result.lastInsertRowid));
+  recordRecentActivity(database, userId, {
+    actionType: "created",
+    objectId: container.id,
+    objectName: container.name,
+    objectType: "container",
+    toLocation: getParentLocationSnapshot(database, container.parentContainerId)
+  });
+
   return {
-    container: getContainerById(database, Number(result.lastInsertRowid))
+    container
   };
 }
 
@@ -190,11 +204,13 @@ function getContainerDetail(database, containerId, userId) {
     )
     .all(userId, container.id);
   const { fullPath, path } = getContainerPathInfo(database, container);
+  const relationshipPaths = getContainerRelationshipPaths(database, container);
 
   return {
     container,
     fullPath,
     path,
+    relationshipPaths,
     childContainers,
     childItems,
     itemCount: childItems.length,
@@ -267,6 +283,14 @@ function moveContainer(database, containerId, userId, payload) {
     payload.parentContainerId,
     userId
   );
+  const fromLocation = getParentLocationSnapshot(
+    database,
+    container.parentContainerId
+  );
+  const toLocation = getParentLocationSnapshot(
+    database,
+    destinationParent ? destinationParent.id : null
+  );
 
   database
     .prepare(
@@ -282,6 +306,14 @@ function moveContainer(database, containerId, userId, payload) {
 
   const updatedContainer = getContainerById(database, container.id);
   const { fullPath, path } = getContainerPathInfo(database, updatedContainer);
+  recordRecentActivity(database, userId, {
+    actionType: "moved",
+    fromLocation,
+    objectId: container.id,
+    objectName: container.name,
+    objectType: "container",
+    toLocation
+  });
 
   return {
     container: updatedContainer,
@@ -290,36 +322,247 @@ function moveContainer(database, containerId, userId, payload) {
   };
 }
 
-function deleteContainer(database, containerId, userId) {
-  const container = validateContainerDeletion(database, containerId, userId);
-  const promoteAndDeleteContainer = database.transaction(() => {
-    database
-      .prepare(
-        `
-          UPDATE containers
-          SET
-            parentContainerId = ?,
-            updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-          WHERE userId = ? AND parentContainerId = ?
-        `
-      )
-      .run(container.parentContainerId, userId, container.id);
+function getDirectContainerChildren(database, containerId, userId) {
+  return database
+    .prepare(
+      `
+        SELECT ${containerSelectColumns}
+        FROM containers
+        WHERE userId = ? AND parentContainerId = ?
+        ORDER BY name COLLATE NOCASE ASC, id ASC
+      `
+    )
+    .all(userId, containerId);
+}
 
-    database
-      .prepare(
-        `
-          UPDATE items
-          SET
-            parentContainerId = ?,
-            updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-          WHERE userId = ? AND parentContainerId = ?
-        `
+function getDirectItemChildren(database, containerId, userId) {
+  return database
+    .prepare(
+      `
+        SELECT ${itemSelectColumns}
+        FROM items
+        WHERE userId = ? AND parentContainerId = ?
+        ORDER BY name COLLATE NOCASE ASC, id ASC
+      `
+    )
+    .all(userId, containerId);
+}
+
+function getDeleteDestinationParentContainerId(
+  database,
+  container,
+  userId,
+  destinationParentContainerId
+) {
+  const destinationParent = validateParentContainerAssignment(
+    database,
+    destinationParentContainerId,
+    userId
+  );
+
+  if (destinationParent && destinationParent.id === container.id) {
+    throw createHttpError(409, "Deleted container cannot be used as a destination");
+  }
+
+  return destinationParent ? destinationParent.id : null;
+}
+
+function getDirectChildKey(objectType, objectId) {
+  return `${objectType}:${objectId}`;
+}
+
+function getContainerDeleteMoves(database, container, userId, payload = {}) {
+  requirePlainObject(payload);
+
+  const childContainers = getDirectContainerChildren(database, container.id, userId);
+  const childItems = getDirectItemChildren(database, container.id, userId);
+  const children = [
+    ...childContainers.map((childContainer) => ({
+      object: childContainer,
+      objectType: "container"
+    })),
+    ...childItems.map((childItem) => ({
+      object: childItem,
+      objectType: "item"
+    }))
+  ];
+
+  const contentStrategy = payload.contentStrategy || (
+    children.length === 0 ? "parent" : null
+  );
+
+  if (!contentStrategy) {
+    throw createHttpError(400, "contentStrategy is required");
+  }
+
+  if (contentStrategy === "parent") {
+    return children.map((child) => ({
+      ...child,
+      destinationParentContainerId: container.parentContainerId
+    }));
+  }
+
+  if (contentStrategy === "topLevel") {
+    return children.map((child) => ({
+      ...child,
+      destinationParentContainerId: null
+    }));
+  }
+
+  if (contentStrategy === "container") {
+    if (
+      !hasOwnProperty(payload, "destinationParentContainerId") ||
+      payload.destinationParentContainerId === null ||
+      payload.destinationParentContainerId === ""
+    ) {
+      throw createHttpError(400, "destinationParentContainerId is required");
+    }
+
+    const destinationParentContainerId = getDeleteDestinationParentContainerId(
+      database,
+      container,
+      userId,
+      payload.destinationParentContainerId
+    );
+
+    return children.map((child) => ({
+      ...child,
+      destinationParentContainerId
+    }));
+  }
+
+  if (contentStrategy !== "custom") {
+    throw createHttpError(400, "contentStrategy is invalid");
+  }
+
+  if (!Array.isArray(payload.childDestinations)) {
+    throw createHttpError(400, "childDestinations is required");
+  }
+
+  const childrenByKey = new Map(
+    children.map((child) => [
+      getDirectChildKey(child.objectType, child.object.id),
+      child
+    ])
+  );
+  const seenChildKeys = new Set();
+  const moves = [];
+
+  for (const childDestination of payload.childDestinations) {
+    requirePlainObject(childDestination);
+
+    if (
+      childDestination.objectType !== "container" &&
+      childDestination.objectType !== "item"
+    ) {
+      throw createHttpError(400, "child objectType is invalid");
+    }
+
+    const objectId = Number(childDestination.objectId);
+    const childKey = getDirectChildKey(childDestination.objectType, objectId);
+    const child = childrenByKey.get(childKey);
+
+    if (!Number.isInteger(objectId) || objectId <= 0 || !child) {
+      throw createHttpError(400, "childDestinations must include only direct children");
+    }
+
+    if (seenChildKeys.has(childKey)) {
+      throw createHttpError(400, "childDestinations contains duplicate children");
+    }
+
+    if (!hasOwnProperty(childDestination, "parentContainerId")) {
+      throw createHttpError(400, "child destination parentContainerId is required");
+    }
+
+    seenChildKeys.add(childKey);
+    moves.push({
+      ...child,
+      destinationParentContainerId: getDeleteDestinationParentContainerId(
+        database,
+        container,
+        userId,
+        childDestination.parentContainerId
       )
-      .run(container.parentContainerId, userId, container.id);
+    });
+  }
+
+  if (seenChildKeys.size !== children.length) {
+    throw createHttpError(
+      400,
+      "Every direct child must have a destination before deleting"
+    );
+  }
+
+  return moves;
+}
+
+function validateContainerDeleteMoves(database, container, userId, moves) {
+  for (const move of moves) {
+    if (move.objectType === "container") {
+      validateContainerMove(
+        database,
+        move.object.id,
+        move.destinationParentContainerId,
+        userId
+      );
+      continue;
+    }
+
+    validateParentContainerAssignment(
+      database,
+      move.destinationParentContainerId,
+      userId
+    );
+  }
+}
+
+function deleteContainer(database, containerId, userId, payload = {}) {
+  const container = validateContainerDeletion(database, containerId, userId);
+  const fromLocation = getParentLocationSnapshot(
+    database,
+    container.parentContainerId
+  );
+  const moves = getContainerDeleteMoves(database, container, userId, payload);
+
+  validateContainerDeleteMoves(database, container, userId, moves);
+
+  const promoteAndDeleteContainer = database.transaction(() => {
+    const updateContainerParent = database.prepare(
+      `
+        UPDATE containers
+        SET
+          parentContainerId = ?,
+          updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        WHERE id = ? AND userId = ?
+      `
+    );
+    const updateItemParent = database.prepare(
+      `
+        UPDATE items
+        SET
+          parentContainerId = ?,
+          updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        WHERE id = ? AND userId = ?
+      `
+    );
+
+    for (const move of moves) {
+      const updateParent =
+        move.objectType === "container" ? updateContainerParent : updateItemParent;
+      updateParent.run(move.destinationParentContainerId, move.object.id, userId);
+    }
 
     database
       .prepare("DELETE FROM containers WHERE id = ? AND userId = ?")
       .run(container.id, userId);
+
+    recordRecentActivity(database, userId, {
+      actionType: "deleted",
+      fromLocation,
+      objectId: container.id,
+      objectName: container.name,
+      objectType: "container"
+    });
   });
 
   promoteAndDeleteContainer();

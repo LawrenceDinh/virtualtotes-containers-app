@@ -7,7 +7,9 @@ const Database = require("better-sqlite3");
 
 const {
   DEFAULT_RECENT_OBJECT_LIMIT,
+  listRecentActivity,
   listRecentObjects,
+  recordRecentActivity,
   recordRecentObjectOpen
 } = require("./recent-objects");
 
@@ -100,12 +102,14 @@ test("recordRecentObjectOpen records container and item opens in most-recent-fir
             {
               id: 2,
               name: "Packing Tape",
-              objectType: "item"
+              objectType: "item",
+              photoPath: "item-2.jpg"
             },
             {
               id: 1,
               name: "Garage Tote",
-              objectType: "container"
+              objectType: "container",
+              photoPath: "container-1.jpg"
             }
           ],
           pathContext: "Packing Tape > Garage Tote",
@@ -121,7 +125,8 @@ test("recordRecentObjectOpen records container and item opens in most-recent-fir
             {
               id: 1,
               name: "Garage Tote",
-              objectType: "container"
+              objectType: "container",
+              photoPath: "container-1.jpg"
             }
           ],
           pathContext: "Top level",
@@ -134,6 +139,10 @@ test("recordRecentObjectOpen records container and item opens in most-recent-fir
     assert.match(
       result.recentObjects[0].openedAt,
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
+    );
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM recent_activity").get().count,
+      0
     );
   } finally {
     database.close();
@@ -239,7 +248,8 @@ test("listRecentObjects removes stale and duplicate rows from older placeholder 
           {
             id: 1,
             name: "Garage Tote",
-            objectType: "container"
+            objectType: "container",
+            photoPath: "container-1.jpg"
           }
         ],
         pathContext: "Top level",
@@ -254,6 +264,103 @@ test("listRecentObjects removes stale and duplicate rows from older placeholder 
         .prepare("SELECT COUNT(*) AS count FROM recent_objects WHERE userId = 1")
         .get().count,
       1
+    );
+  } finally {
+    database.close();
+  }
+});
+
+test("recordRecentActivity lists newest activity and keeps deleted snapshots", () => {
+  const database = createTestDatabase();
+
+  try {
+    recordRecentActivity(database, 1, {
+      actionType: "created",
+      objectId: 1,
+      objectName: "Loose Batteries",
+      objectType: "item",
+      toLocation: "Top level"
+    });
+    recordRecentActivity(database, 1, {
+      actionType: "moved",
+      fromLocation: "Garage Tote",
+      objectId: 2,
+      objectName: "Packing Tape",
+      objectType: "item",
+      toLocation: "Shelf Bin > Garage Tote"
+    });
+    recordRecentActivity(database, 1, {
+      actionType: "opened",
+      objectId: 2,
+      objectName: "Packing Tape",
+      objectType: "item"
+    });
+    recordRecentActivity(database, 1, {
+      actionType: "deleted",
+      fromLocation: "Shelf Bin > Garage Tote",
+      objectId: 3,
+      objectName: "Cable Ties",
+      objectType: "item"
+    });
+    recordRecentActivity(database, 2, {
+      actionType: "created",
+      objectId: 4,
+      objectName: "Other User Item",
+      objectType: "item",
+      toLocation: "Top level"
+    });
+
+    database.prepare("DELETE FROM items WHERE id = 3").run();
+
+    const result = listRecentActivity(database, 1);
+
+    assert.deepEqual(
+      result.recentObjects.map((activity) => ({
+        actionType: activity.actionType,
+        activityLabel: activity.activityLabel,
+        canNavigate: activity.canNavigate,
+        fromLocation: activity.fromLocation,
+        isDeleted: activity.isDeleted,
+        name: activity.name,
+        objectId: activity.objectId,
+        objectType: activity.objectType,
+        toLocation: activity.toLocation
+      })),
+      [
+        {
+          actionType: "deleted",
+          activityLabel: "Deleted item",
+          canNavigate: false,
+          fromLocation: "Shelf Bin > Garage Tote",
+          isDeleted: true,
+          name: "Cable Ties",
+          objectId: 3,
+          objectType: "item",
+          toLocation: null
+        },
+        {
+          actionType: "moved",
+          activityLabel: "Moved item",
+          canNavigate: true,
+          fromLocation: "Garage Tote",
+          isDeleted: false,
+          name: "Packing Tape",
+          objectId: 2,
+          objectType: "item",
+          toLocation: "Shelf Bin > Garage Tote"
+        },
+        {
+          actionType: "created",
+          activityLabel: "Created item",
+          canNavigate: true,
+          fromLocation: null,
+          isDeleted: false,
+          name: "Loose Batteries",
+          objectId: 1,
+          objectType: "item",
+          toLocation: "Top level"
+        }
+      ]
     );
   } finally {
     database.close();
