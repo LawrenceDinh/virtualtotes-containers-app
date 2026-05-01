@@ -67,7 +67,7 @@ git config commit.template .gitmessage
 
 This helps maintain a clear history and makes releases easier to construct.
 
-5. Support
+6. Support
 ----------
 - Open an Issue for questions or to request repository-level changes.
 
