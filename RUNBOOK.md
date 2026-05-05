@@ -1,10 +1,10 @@
 RUNBOOK — Backup & Restore (VirtualTotes)
 =======================================
 
-This short runbook explains the supported backup and restore workflows for VirtualTotes.
+This runbook explains the supported backup and restore workflows for VirtualTotes.
 Use the provided scripts in `backend/` for consistent backups and restores.
 
-Important: always stop the web service (or ensure it is quiescent) before restoring.
+Important: always stop the web service, or ensure it is quiescent, before restoring.
 
 Basic backup (script)
 ---------------------
@@ -48,7 +48,7 @@ RESTORE_BACKUP_PATH=backups/2026-04-22T06-07-56Z npm run restore
 
 Notes on restore:
 - The restore script copies `inventory.sqlite` and the `photos/` directory from the specified backup into the configured data and photo paths.
-- The restore operation will overwrite the active database and photo files. Stop the server before restoring.
+- The restore operation overwrites the active database and photo files. Stop the server before restoring.
 
 Manual backup & restore (when scripts are not available)
 -----------------------------------------------------
@@ -78,11 +78,10 @@ rsync -a photos/ backups/<stamp>/photos/
 To restore manually:
 
 1. Stop the service.
-2. Overwrite the database and photos from the chosen backup:
+2. Replace the database and photos from the chosen backup:
 
 ```bash
 cp backups/<stamp>/inventory.sqlite data/inventory.sqlite
-rm -rf photos/*
 rsync -a backups/<stamp>/photos/ photos/
 ```
 
@@ -98,10 +97,10 @@ Use the system cron or a scheduler to run nightly backups. Example crontab entry
 
 Retention and housekeeping
 -------------------------
-Remove old backups with a simple `find` command (retain backups for 30 days):
+Review old backups before removing them. For example, to list backup directories older than 30 days:
 
 ```bash
-find backups -maxdepth 1 -mindepth 1 -type d -mtime +30 -exec rm -rf {} +
+find backups -maxdepth 1 -mindepth 1 -type d -mtime +30
 ```
 
 Security and safety notes

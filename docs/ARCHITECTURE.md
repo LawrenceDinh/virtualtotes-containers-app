@@ -2,7 +2,7 @@
 
 Overview
 --------
-VirtualTotes is a small, LAN-first personal inventory prototype composed of a minimal Node.js backend and a single-page frontend. Data is stored in SQLite and photos are stored on disk; the app is intended for private, single-user deployments.
+VirtualTotes is a small, LAN-first personal inventory application composed of a minimal Node.js backend and a single-page frontend. Data is stored in SQLite and photos are stored on disk; the app is intended for private, single-user deployments.
 
 Components
 ----------
@@ -10,7 +10,7 @@ Components
 - Frontend: `frontend/` — a single-page vanilla JS app (`index.html`, `app.js`, `style.css`) that drives the UI and calls the backend API.
 - Database: SQLite file (default path `./data/inventory.sqlite`). Schema is in `backend/src/schema.sql`.
 - Photo storage: filesystem directory (default `./photos`); the DB stores photo file paths and photos are served through authenticated API endpoints.
-- Authentication: single private account model with password hashing and server-issued session cookie. Session cookie options are set to reasonably conservative defaults for LAN use.
+- Authentication: single private account model with password hashing and server-issued session cookies. Cookie options are set to conservative defaults for LAN use.
 - QR flow: Each object (container or item) may have an associated `qrCode`. Scanning a QR triggers lookup to open, link, or create an object. QR uniqueness is enforced by the backend.
 - Search: supported by simple SQL queries against the SQLite DB (see `backend/src/search.js`).
 - Inventory overview: `backend/src/inventory-overview.js` returns owned object counts, item/container lists, and relationship paths for the overview page.
@@ -31,7 +31,7 @@ Primary env vars (see `backend/.env.example`):
 Startup & deployment
 --------------------
 1. Install dependencies: `cd backend && npm install`.
-2. Configure environment: copy `backend/.env.example` → `backend/.env` and set values.
+2. Configure environment: copy `backend/.env.example` to `backend/.env` and set values.
 3. Ensure `data/` and `photos/` directories exist and are writable by the service user.
 4. Start: `cd backend && npm start` (app listens on configured `LOCAL_SERVER_ADDRESS`).
 
