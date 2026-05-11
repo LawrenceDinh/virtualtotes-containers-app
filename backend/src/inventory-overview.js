@@ -1,4 +1,5 @@
 const { getContainerPathInfo, getItemPathInfo } = require("./paths");
+const { config } = require("./config");
 
 const containerSelectColumns = `
   id,
@@ -54,7 +55,7 @@ function buildRelationshipPath(objectType, object) {
   return {
     objectId: object.id,
     objectType,
-    path: `Top Level > ${object.fullPath}`,
+    path: `${object.fullPath} > Top Level`,
     pathSegments: object.path
   };
 }
@@ -99,6 +100,7 @@ function getInventoryOverview(database, userId) {
       containers: containers.length,
       items: items.length
     },
+    debugBulkDeleteEnabled: config.enableDebugBulkDelete,
     containers,
     items,
     relationshipPaths: [

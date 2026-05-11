@@ -11,7 +11,7 @@ Key features
 - QR scanning and manual QR entry to open or link objects
 - Create, edit, and nest containers; create and edit items
 - Move items between containers or to/from top-level
-- Global search, inventory overview, and recent activity for fast lookup
+- Global search, inventory overview, recent activity, and full Activity History for fast lookup
 - Attach and replace photos for containers and items
 
 How it works (user perspective)
@@ -45,12 +45,17 @@ Inventory overview
 
 - Objects: the app manages two primary object types: **containers** and **items**. Containers may contain items and other containers; items cannot contain anything.
 - Data model: each object stores standard metadata: `id`, `userId`, `name`, `photoPath`, `qrCode`, `parentContainerId`, `createdAt`, and `updatedAt`.
-- Top-level vs nested: both containers and items can exist at the top level (no parent) or nested under a container. The UI shows clickable child-to-parent paths for object location and relationship context.
+- Top-level vs nested: both containers and items can exist at the top level (no parent) or nested under a container. Relationship paths read from the object outward toward the root, for example `Packing Tape > Garage Tote > Top Level`.
 - Inventory overview: the home page links to an overview of all owned items, containers, and relationship paths.
-- Recent activity: creates, moves, and deletes are stored chronologically with snapshots so deleted-object activity remains readable.
+- Recent activity: creates, moves, and deletes are stored chronologically with snapshots so deleted-object activity remains readable. The Home panel loads a small recent subset, and the `/activity` page loads Activity History in batches.
 - Photos: photos are stored on disk (paths stored in the DB) and served via authenticated API endpoints; photo files are not embedded in the database.
 - QR workflow: a QR code maps to exactly one object; scanning an unknown QR opens a create-or-link flow so you can onboard physical items quickly.
 - Move behavior: items can be moved to/from top-level and between containers. Container moves are validated to prevent circular nesting.
+
+Debug cleanup
+-------------
+
+VirtualTotes includes optional local debug/admin cleanup controls for reset and testing workflows. They are disabled by default with `ENABLE_DEBUG_BULK_DELETE=false`; when explicitly enabled, destructive cleanup actions require a server-side preview, typed confirmation, a SQLite backup, and transactional database changes.
 
 Container delete behavior
 -------------------------
@@ -130,5 +135,4 @@ License
 Copyright © 2026 Luat "Lawrence" Dinh. All rights reserved.
 
 This repository is provided for portfolio and review purposes only. No permission is granted to copy, modify, distribute, or use this code commercially without written permission.
-
 

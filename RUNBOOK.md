@@ -6,6 +6,19 @@ Use the provided scripts in `backend/` for consistent backups and restores.
 
 Important: always stop the web service, or ensure it is quiescent, before restoring.
 
+Start and stop
+--------------
+Start the local server from the `backend/` directory:
+
+```bash
+cd backend
+npm start
+```
+
+The app listens on `LOCAL_SERVER_ADDRESS` from the environment, defaulting to
+`http://0.0.0.0:3000`. Stop the process with the service manager you use for
+deployment, or press `Ctrl+C` when running it directly in a terminal.
+
 Basic backup (script)
 ---------------------
 The project includes a simple backup script in `backend/src/backup-local.js`. From the repository root:
@@ -102,6 +115,27 @@ Review old backups before removing them. For example, to list backup directories
 ```bash
 find backups -maxdepth 1 -mindepth 1 -type d -mtime +30
 ```
+
+Debug cleanup backups
+---------------------
+VirtualTotes has optional debug/admin cleanup controls for local reset and
+testing workflows. These controls are disabled in committed examples:
+
+```bash
+ENABLE_DEBUG_BULK_DELETE=false
+```
+
+To enable them on a local instance, set the flag to `true` in the runtime
+environment or `backend/.env`, then restart the server:
+
+```bash
+ENABLE_DEBUG_BULK_DELETE=true
+```
+
+When enabled, the UI exposes protected cleanup controls on Inventory Overview.
+The backend still requires server-side preview endpoints, exact typed
+confirmation, a SQLite backup before destructive changes, and transactional
+database updates. Keep the default off for normal use.
 
 Security and safety notes
 -------------------------

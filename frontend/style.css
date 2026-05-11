@@ -258,6 +258,74 @@ select.text-input {
   background: var(--surface-strong);
 }
 
+.debug-cleanup-zone {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--danger-border);
+  border-radius: 14px;
+  background: var(--danger-soft);
+}
+
+.debug-cleanup-zone .helper-text {
+  margin: 2px 0 0;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(29, 40, 36, 0.48);
+}
+
+.modal-panel {
+  width: min(100%, 520px);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-strong);
+  box-shadow: 0 20px 60px var(--shadow);
+}
+
+.preview-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.preview-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-list dt {
+  color: var(--muted);
+}
+
+.preview-list dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+.confirmation-phrase {
+  display: block;
+  margin-top: 6px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
 .delete-option-grid,
 .button-row {
   display: grid;
@@ -352,6 +420,21 @@ select.text-input {
   text-decoration: none;
   font-weight: 700;
   color: var(--accent-strong);
+}
+
+.text-link {
+  width: fit-content;
+  color: var(--accent-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.text-link:hover {
+  text-decoration: underline;
+}
+
+.recent-see-all {
+  margin-top: -4px;
 }
 
 .detail-card,

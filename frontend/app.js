@@ -1,6 +1,15 @@
 const ui = {
   addEntryButton: document.querySelector("[data-add-entry]"),
   appNav: document.querySelector("[data-app-nav]"),
+  activityHistoryEmptyNode: document.querySelector("[data-activity-history-empty]"),
+  activityHistoryListNode: document.querySelector("[data-activity-history-list]"),
+  activityHistoryLoadMoreButton: document.querySelector(
+    "[data-activity-history-load-more]"
+  ),
+  activityHistoryPage: document.querySelector("[data-activity-history-page]"),
+  activityHistorySummaryNode: document.querySelector(
+    "[data-activity-history-summary]"
+  ),
   containerActionNote: document.querySelector("[data-container-action-note]"),
   containerAddContainerButton: document.querySelector("[data-container-add-container]"),
   containerAddItemButton: document.querySelector("[data-container-add-item]"),
@@ -84,6 +93,49 @@ const ui = {
   entryNoteNode: document.querySelector("[data-entry-note]"),
   homeSections: document.querySelector("[data-home-sections]"),
   homeView: document.querySelector("[data-home-view]"),
+  debugBulkDeleteCancelButton: document.querySelector(
+    "[data-debug-bulk-delete-cancel]"
+  ),
+  debugBulkDeleteConfirmButton: document.querySelector(
+    "[data-debug-bulk-delete-confirm]"
+  ),
+  debugBulkDeleteContainersAffectedNode: document.querySelector(
+    "[data-debug-bulk-delete-containers-affected]"
+  ),
+  debugBulkDeleteContainersButton: document.querySelector(
+    "[data-debug-delete-containers]"
+  ),
+  debugBulkDeleteContainersPolicyNode: document.querySelector(
+    "[data-debug-bulk-delete-containers-policy]"
+  ),
+  debugBulkDeleteContainersZone: document.querySelector(
+    "[data-debug-bulk-delete-containers-zone]"
+  ),
+  debugBulkDeleteErrorNode: document.querySelector("[data-debug-bulk-delete-error]"),
+  debugBulkDeleteItemsAffectedNode: document.querySelector(
+    "[data-debug-bulk-delete-items-affected]"
+  ),
+  debugBulkDeleteItemsButton: document.querySelector("[data-debug-delete-items]"),
+  debugBulkDeleteItemsPolicyNode: document.querySelector(
+    "[data-debug-bulk-delete-items-policy]"
+  ),
+  debugBulkDeleteItemsZone: document.querySelector(
+    "[data-debug-bulk-delete-items-zone]"
+  ),
+  debugBulkDeleteModal: document.querySelector("[data-debug-bulk-delete-modal]"),
+  debugBulkDeleteMovePolicyNode: document.querySelector(
+    "[data-debug-bulk-delete-move-policy]"
+  ),
+  debugBulkDeletePhraseNode: document.querySelector(
+    "[data-debug-bulk-delete-phrase]"
+  ),
+  debugBulkDeleteSummaryNode: document.querySelector(
+    "[data-debug-bulk-delete-summary]"
+  ),
+  debugBulkDeleteTitleNode: document.querySelector("[data-debug-bulk-delete-title]"),
+  debugBulkDeleteConfirmationInput: document.querySelector(
+    "[data-debug-bulk-delete-confirmation-input]"
+  ),
   inventoryContainerCountNode: document.querySelector(
     "[data-inventory-container-count]"
   ),
@@ -208,6 +260,7 @@ const ui = {
   passwordInput: document.querySelector("[data-password-input]"),
   recentEmptyNode: document.querySelector("[data-recent-empty]"),
   recentListNode: document.querySelector("[data-recent-objects]"),
+  recentSeeAllLink: document.querySelector("[data-recent-see-all]"),
   recentSummaryNode: document.querySelector("[data-recent-summary]"),
   recentToggleButton: document.querySelector("[data-recent-toggle]"),
   rowTemplate: document.querySelector("#object-row-template"),
@@ -258,15 +311,26 @@ const ui = {
 let currentContainerDetail = null;
 let currentContainerDeleteState = null;
 let currentContainerMoveState = null;
+let currentDebugBulkDeleteState = null;
+let currentInventoryOverviewCounts = {
+  containers: 0,
+  items: 0
+};
 let currentItemDetail = null;
 let currentItemMoveState = null;
 let currentObjectFormState = null;
 let currentObjectFormPhotoPreviewUrl = null;
 let currentQrScanState = null;
+let currentActivityHistoryObjects = [];
+let currentActivityHistoryTotalCount = 0;
+let currentActivityHistoryLoading = false;
 let currentRecentActivityObjects = [];
 let currentRecentActivityExpanded = false;
+let currentRecentActivityTotalCount = 0;
 let currentUnknownQrState = null;
 
+const ACTIVITY_HISTORY_PAGE_LIMIT = 25;
+const HOME_RECENT_ACTIVITY_LIMIT = 10;
 const RECENT_ACTIVITY_COLLAPSED_LIMIT = 5;
 
 function createRequestError(status, message) {
@@ -568,6 +632,12 @@ function getCurrentRoute() {
     };
   }
 
+  if (normalizedPath === "/activity") {
+    return {
+      name: "activity-history"
+    };
+  }
+
   if (normalizedPath === "/objects/new") {
     return {
       name: "object-form",
@@ -680,6 +750,7 @@ function setActiveView(viewName) {
   }
 
   const panels = [
+    ui.activityHistoryPage,
     ui.homeView,
     ui.searchSection,
     ui.inventoryOverviewPage,
@@ -697,6 +768,7 @@ function setActiveView(viewName) {
   }
 
   const panelByViewName = {
+    "activity-history": ui.activityHistoryPage,
     container: ui.containerPage,
     "container-move": ui.containerMovePage,
     home: ui.homeView,
@@ -736,9 +808,11 @@ function resetHomeData() {
   ui.recentSummaryNode.textContent = "Loading recent activity...";
   ui.recentToggleButton.hidden = true;
   ui.recentToggleButton.textContent = "Show more";
+  ui.recentSeeAllLink.hidden = true;
   ui.recentListNode.classList.remove("recent-activity-list-expanded");
   currentRecentActivityExpanded = false;
   currentRecentActivityObjects = [];
+  currentRecentActivityTotalCount = 0;
   ui.inventoryStatsSummaryNode.textContent = "Loading inventory stats...";
   ui.inventoryContainerCountNode.textContent = "0";
   ui.inventoryItemCountNode.textContent = "0";
@@ -763,11 +837,33 @@ function resetHomeData() {
   showSearchPlaceholder();
 }
 
+function resetActivityHistoryPage() {
+  currentActivityHistoryObjects = [];
+  currentActivityHistoryTotalCount = 0;
+  currentActivityHistoryLoading = false;
+  ui.activityHistorySummaryNode.textContent = "Loading activity history...";
+  ui.activityHistoryLoadMoreButton.hidden = true;
+  ui.activityHistoryLoadMoreButton.disabled = false;
+  ui.activityHistoryLoadMoreButton.textContent = "Load more";
+  renderObjectList(
+    ui.activityHistoryListNode,
+    ui.activityHistoryEmptyNode,
+    [],
+    "No activity yet."
+  );
+}
+
 function resetInventoryOverviewPage() {
+  currentDebugBulkDeleteState = null;
   ui.inventoryOverviewSummaryNode.textContent = "Loading inventory overview...";
   ui.inventoryItemsSummaryNode.textContent = "Loading items...";
   ui.inventoryContainersSummaryNode.textContent = "Loading containers...";
   ui.inventoryPathsSummaryNode.textContent = "Loading relationship paths...";
+  closeDebugBulkDeleteModal();
+  ui.debugBulkDeleteItemsZone.hidden = true;
+  ui.debugBulkDeleteContainersZone.hidden = true;
+  ui.debugBulkDeleteItemsButton.disabled = true;
+  ui.debugBulkDeleteContainersButton.disabled = true;
   renderObjectList(
     ui.inventoryItemsListNode,
     ui.inventoryItemsEmptyNode,
@@ -1318,19 +1414,21 @@ async function loadTopLevelItems() {
 }
 
 async function loadRecentObjects() {
-  const data = await fetchJson("/api/recent-objects");
+  const data = await fetchJson(
+    `/api/recent-objects?limit=${HOME_RECENT_ACTIVITY_LIMIT}&offset=0`
+  );
   currentRecentActivityObjects = Array.isArray(data.recentObjects)
     ? data.recentObjects
     : [];
+  currentRecentActivityTotalCount = Number.isInteger(data.totalCount)
+    ? data.totalCount
+    : currentRecentActivityObjects.length;
   currentRecentActivityExpanded = false;
   renderRecentActivity();
 }
 
-function renderRecentActivity() {
-  const visibleRecentObjects = currentRecentActivityExpanded
-    ? currentRecentActivityObjects
-    : currentRecentActivityObjects.slice(0, RECENT_ACTIVITY_COLLAPSED_LIMIT);
-  const rows = visibleRecentObjects.map((recentObject) =>
+function createRecentActivityRows(recentObjects) {
+  return recentObjects.map((recentObject) =>
     createObjectRow({
       badge: recentObject.objectType === "container" ? "Container" : "Item",
       context: getRecentObjectContext(recentObject),
@@ -1349,12 +1447,25 @@ function renderRecentActivity() {
       )
     })
   );
-  const hasMoreRecentActivity =
-    currentRecentActivityObjects.length > RECENT_ACTIVITY_COLLAPSED_LIMIT;
+}
 
-  ui.recentSummaryNode.textContent = currentRecentActivityObjects.length
+function renderRecentActivity() {
+  const visibleLimit = currentRecentActivityExpanded
+    ? HOME_RECENT_ACTIVITY_LIMIT
+    : RECENT_ACTIVITY_COLLAPSED_LIMIT;
+  const visibleRecentObjects = currentRecentActivityObjects.slice(0, visibleLimit);
+  const rows = createRecentActivityRows(visibleRecentObjects);
+  const hasMoreRecentActivity =
+    visibleRecentObjects.length < currentRecentActivityObjects.length &&
+    visibleRecentObjects.length < HOME_RECENT_ACTIVITY_LIMIT;
+  const totalCount = Math.max(
+    currentRecentActivityTotalCount,
+    currentRecentActivityObjects.length
+  );
+
+  ui.recentSummaryNode.textContent = totalCount
     ? `Showing ${visibleRecentObjects.length} of ${formatCount(
-        currentRecentActivityObjects.length,
+        totalCount,
         "recent activity",
         "recent activities"
       )}`
@@ -1370,9 +1481,90 @@ function renderRecentActivity() {
     currentRecentActivityExpanded && hasMoreRecentActivity
   );
   ui.recentToggleButton.hidden = !hasMoreRecentActivity;
-  ui.recentToggleButton.textContent = currentRecentActivityExpanded
-    ? "Show less"
-    : "Show more";
+  ui.recentToggleButton.textContent = "Show more";
+  ui.recentSeeAllLink.hidden = false;
+}
+
+function renderActivityHistory() {
+  const totalCount = Math.max(
+    currentActivityHistoryTotalCount,
+    currentActivityHistoryObjects.length
+  );
+  const rows = createRecentActivityRows(currentActivityHistoryObjects);
+
+  ui.activityHistorySummaryNode.textContent = totalCount
+    ? `Showing ${currentActivityHistoryObjects.length} of ${formatCount(
+        totalCount,
+        "activity entry",
+        "activity entries"
+      )}`
+    : "No activity yet.";
+  renderObjectList(
+    ui.activityHistoryListNode,
+    ui.activityHistoryEmptyNode,
+    rows,
+    "No activity yet."
+  );
+
+  const hasMore = currentActivityHistoryObjects.length < totalCount;
+  ui.activityHistoryLoadMoreButton.hidden = !hasMore;
+  ui.activityHistoryLoadMoreButton.disabled = currentActivityHistoryLoading;
+  ui.activityHistoryLoadMoreButton.textContent = currentActivityHistoryLoading
+    ? "Loading..."
+    : "Load more";
+}
+
+async function loadActivityHistoryPageEntries({ append = false } = {}) {
+  if (currentActivityHistoryLoading) {
+    return;
+  }
+
+  currentActivityHistoryLoading = true;
+
+  if (append) {
+    renderActivityHistory();
+  }
+
+  const offset = append ? currentActivityHistoryObjects.length : 0;
+
+  try {
+    const data = await fetchJson(
+      `/api/recent-objects?limit=${ACTIVITY_HISTORY_PAGE_LIMIT}&offset=${offset}`
+    );
+    const nextObjects = Array.isArray(data.recentObjects)
+      ? data.recentObjects
+      : [];
+
+    currentActivityHistoryObjects = append
+      ? [...currentActivityHistoryObjects, ...nextObjects]
+      : nextObjects;
+    currentActivityHistoryTotalCount = Number.isInteger(data.totalCount)
+      ? data.totalCount
+      : currentActivityHistoryObjects.length;
+    currentActivityHistoryLoading = false;
+    renderActivityHistory();
+  } catch (error) {
+    currentActivityHistoryLoading = false;
+
+    if (error.status === 401) {
+      showSignedOutState("Session expired. Sign in again.");
+      return;
+    }
+
+    ui.activityHistorySummaryNode.textContent =
+      append ? "Could not load more activity." : "Could not load activity history.";
+    renderObjectList(
+      ui.activityHistoryListNode,
+      ui.activityHistoryEmptyNode,
+      currentActivityHistoryObjects.length
+        ? createRecentActivityRows(currentActivityHistoryObjects)
+        : [],
+      "Activity history is unavailable."
+    );
+    ui.activityHistoryLoadMoreButton.hidden = true;
+    ui.activityHistoryLoadMoreButton.disabled = false;
+    ui.activityHistoryLoadMoreButton.textContent = "Load more";
+  }
 }
 
 async function loadInventoryStats() {
@@ -1391,6 +1583,40 @@ function getOverviewObjectContext(object) {
   return object.topLevel ? "Top level" : object.fullPath;
 }
 
+function appendTopLevelPathSegment(targetNode) {
+  if (targetNode.textContent.trim()) {
+    const separatorNode = document.createElement("span");
+    separatorNode.className = "path-separator";
+    separatorNode.textContent = " > ";
+    targetNode.append(separatorNode);
+  }
+
+  const topLevelNode = document.createElement("span");
+  topLevelNode.textContent = "Top Level";
+  targetNode.append(topLevelNode);
+}
+
+function formatRelationshipPathText(pathText) {
+  if (!pathText) {
+    return "Top Level";
+  }
+
+  const pathSegments = String(pathText)
+    .split(">")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  while (pathSegments[0] === "Top Level") {
+    pathSegments.shift();
+  }
+
+  while (pathSegments[pathSegments.length - 1] === "Top Level") {
+    pathSegments.pop();
+  }
+
+  return [...pathSegments, "Top Level"].join(" > ");
+}
+
 function renderPathList(listNode, emptyNode, paths, emptyMessage) {
   const rows = paths.map((relationshipPath) => {
     const row = document.createElement("li");
@@ -1400,25 +1626,26 @@ function renderPathList(listNode, emptyNode, paths, emptyMessage) {
 
     pathNode.className = "path-row";
     pathContentNode.className = "path-content";
-    pathContentNode.textContent = "Top Level";
 
     if (
       Array.isArray(relationshipPath.pathSegments) &&
       relationshipPath.pathSegments.length > 0
     ) {
-      const separatorNode = document.createElement("span");
-      separatorNode.className = "path-separator";
-      separatorNode.textContent = " > ";
-      const linksNode = document.createElement("span");
-
       renderPathLinks(
-        linksNode,
+        pathContentNode,
         relationshipPath.pathSegments,
-        relationshipPath.path.replace(/^Top Level > /, "")
+        formatRelationshipPathText(relationshipPath.path).replace(
+          / > Top Level$/,
+          ""
+        )
       );
-      pathContentNode.append(separatorNode, linksNode);
+      appendTopLevelPathSegment(pathContentNode);
     } else if (relationshipPath.path) {
-      pathContentNode.textContent = relationshipPath.path;
+      pathContentNode.textContent = formatRelationshipPathText(
+        relationshipPath.path
+      );
+    } else {
+      pathContentNode.textContent = "Top Level";
     }
 
     typeNode.className = "object-badge";
@@ -1436,7 +1663,29 @@ function renderPathList(listNode, emptyNode, paths, emptyMessage) {
   emptyNode.textContent = emptyMessage;
 }
 
+function renderDebugBulkDeleteControls(data) {
+  const isEnabled = data.debugBulkDeleteEnabled === true;
+
+  ui.debugBulkDeleteItemsZone.hidden = !isEnabled;
+  ui.debugBulkDeleteContainersZone.hidden = !isEnabled;
+
+  if (!isEnabled) {
+    return;
+  }
+
+  const isDeleting =
+    currentDebugBulkDeleteState && currentDebugBulkDeleteState.inProgress;
+
+  ui.debugBulkDeleteItemsButton.disabled = isDeleting || data.counts.items === 0;
+  ui.debugBulkDeleteContainersButton.disabled =
+    isDeleting || data.counts.containers === 0;
+}
+
 function renderInventoryOverview(data) {
+  currentInventoryOverviewCounts = {
+    containers: data.counts.containers,
+    items: data.counts.items
+  };
   const itemRows = data.items.map((item) =>
     createObjectRow({
       badge: "Item",
@@ -1518,6 +1767,7 @@ function renderInventoryOverview(data) {
     containerPaths,
     "No container paths yet."
   );
+  renderDebugBulkDeleteControls(data);
 }
 
 async function runSearch(query) {
@@ -1613,9 +1863,227 @@ function handleInventoryOverviewLinkClick() {
   navigateTo("/inventory-overview");
 }
 
+function getDebugBulkDeleteConfig(objectType) {
+  if (objectType === "container") {
+    return {
+      confirmLabel: "Confirm delete all containers",
+      deleteEndpoint: "/api/debug/bulk-delete/containers",
+      operationName: "Delete all containers",
+      previewEndpoint: "/api/debug/bulk-delete/containers/preview"
+    };
+  }
+
+  return {
+    confirmLabel: "Confirm delete all items",
+    deleteEndpoint: "/api/debug/bulk-delete/items",
+    operationName: "Delete all items",
+    previewEndpoint: "/api/debug/bulk-delete/items/preview"
+  };
+}
+
+function getDebugBulkDeletePolicyLabel(isDeleted, isPreserved) {
+  if (isDeleted) {
+    return "Deleted";
+  }
+
+  if (isPreserved) {
+    return "Preserved";
+  }
+
+  return "Unchanged";
+}
+
+function hideDebugBulkDeleteError() {
+  ui.debugBulkDeleteErrorNode.hidden = true;
+  ui.debugBulkDeleteErrorNode.textContent = "";
+}
+
+function showDebugBulkDeleteError(message) {
+  ui.debugBulkDeleteErrorNode.textContent = message;
+  ui.debugBulkDeleteErrorNode.hidden = false;
+}
+
+function closeDebugBulkDeleteModal() {
+  if (!ui.debugBulkDeleteModal) {
+    return;
+  }
+
+  ui.debugBulkDeleteModal.hidden = true;
+  ui.debugBulkDeleteConfirmationInput.value = "";
+  ui.debugBulkDeleteConfirmButton.disabled = true;
+  hideDebugBulkDeleteError();
+}
+
+function renderDebugBulkDeletePreview(objectType, preview) {
+  const config = getDebugBulkDeleteConfig(objectType);
+
+  currentDebugBulkDeleteState = {
+    config,
+    inProgress: false,
+    objectType,
+    preview
+  };
+  ui.debugBulkDeleteTitleNode.textContent = config.operationName;
+  ui.debugBulkDeleteSummaryNode.textContent =
+    "Review the server-side preview before continuing.";
+  ui.debugBulkDeleteItemsAffectedNode.textContent = String(
+    preview.affectedItems
+  );
+  ui.debugBulkDeleteContainersAffectedNode.textContent = String(
+    preview.affectedContainers
+  );
+  ui.debugBulkDeleteItemsPolicyNode.textContent = getDebugBulkDeletePolicyLabel(
+    preview.itemsDeleted,
+    preview.itemsPreserved
+  );
+  ui.debugBulkDeleteContainersPolicyNode.textContent =
+    getDebugBulkDeletePolicyLabel(
+      preview.containersDeleted,
+      preview.containersPreserved
+    );
+  ui.debugBulkDeleteMovePolicyNode.textContent =
+    preview.survivingItemsMovedToTopLevel
+      ? "Moved to Top Level"
+      : "Stay in place";
+  ui.debugBulkDeletePhraseNode.textContent = preview.confirmationPhrase;
+  ui.debugBulkDeleteConfirmButton.textContent = config.confirmLabel;
+  ui.debugBulkDeleteConfirmationInput.value = "";
+  ui.debugBulkDeleteConfirmButton.disabled = true;
+  hideDebugBulkDeleteError();
+  ui.debugBulkDeleteModal.hidden = false;
+  ui.debugBulkDeleteConfirmationInput.focus();
+}
+
+async function openDebugBulkDeleteModal(objectType) {
+  const config = getDebugBulkDeleteConfig(objectType);
+
+  currentDebugBulkDeleteState = {
+    config,
+    inProgress: false,
+    objectType,
+    preview: null
+  };
+
+  try {
+    const preview = await fetchJson(config.previewEndpoint);
+    renderDebugBulkDeletePreview(objectType, preview);
+  } catch (error) {
+    if (error.status === 401) {
+      showSignedOutState("Session expired. Sign in again.");
+      return;
+    }
+
+    ui.inventoryOverviewSummaryNode.textContent =
+      "Debug cleanup preview is unavailable.";
+  }
+}
+
+function handleDebugBulkDeleteInput() {
+  if (!currentDebugBulkDeleteState || currentDebugBulkDeleteState.inProgress) {
+    ui.debugBulkDeleteConfirmButton.disabled = true;
+    return;
+  }
+
+  ui.debugBulkDeleteConfirmButton.disabled =
+    ui.debugBulkDeleteConfirmationInput.value !==
+    currentDebugBulkDeleteState.preview.confirmationPhrase;
+}
+
+async function refreshInventoryOverviewAfterBulkDelete(message) {
+  const data = await fetchJson("/api/inventory-overview");
+
+  renderInventoryOverview(data);
+  ui.inventoryOverviewSummaryNode.textContent = message;
+}
+
+function getDebugBulkDeleteSuccessMessage(result, objectType) {
+  if (objectType === "container") {
+    return `Deleted ${formatCount(
+      result.deletedContainers,
+      "container",
+      "containers"
+    )}; moved ${formatCount(
+      result.movedItemsToTopLevel,
+      "item",
+      "items"
+    )} to Top Level.`;
+  }
+
+  return `Deleted ${formatCount(result.deletedItems, "item", "items")}.`;
+}
+
+async function handleDebugBulkDeleteConfirmClick() {
+  if (
+    !currentDebugBulkDeleteState ||
+    currentDebugBulkDeleteState.inProgress ||
+    ui.debugBulkDeleteConfirmationInput.value !==
+      currentDebugBulkDeleteState.preview.confirmationPhrase
+  ) {
+    return;
+  }
+
+  currentDebugBulkDeleteState.inProgress = true;
+  ui.debugBulkDeleteConfirmButton.disabled = true;
+  ui.debugBulkDeleteCancelButton.disabled = true;
+  ui.debugBulkDeleteItemsButton.disabled = true;
+  ui.debugBulkDeleteContainersButton.disabled = true;
+  hideDebugBulkDeleteError();
+
+  try {
+    const result = await fetchJson(currentDebugBulkDeleteState.config.deleteEndpoint, {
+      method: "DELETE"
+    });
+    const objectType = currentDebugBulkDeleteState.objectType;
+    const message = getDebugBulkDeleteSuccessMessage(
+      result,
+      objectType
+    );
+
+    currentDebugBulkDeleteState = null;
+    closeDebugBulkDeleteModal();
+    await refreshInventoryOverviewAfterBulkDelete(message);
+  } catch (error) {
+    if (error.status === 401) {
+      showSignedOutState("Session expired. Sign in again.");
+      return;
+    }
+
+    currentDebugBulkDeleteState.inProgress = false;
+    ui.debugBulkDeleteCancelButton.disabled = false;
+    handleDebugBulkDeleteInput();
+    showDebugBulkDeleteError("Bulk delete failed. No changes were applied.");
+    renderDebugBulkDeleteControls({
+      counts: currentInventoryOverviewCounts,
+      debugBulkDeleteEnabled: true
+    });
+  }
+}
+
+function handleDebugBulkDeleteCancelClick() {
+  if (
+    currentDebugBulkDeleteState &&
+    currentDebugBulkDeleteState.inProgress
+  ) {
+    return;
+  }
+
+  currentDebugBulkDeleteState = null;
+  closeDebugBulkDeleteModal();
+}
+
 function handleRecentToggleClick() {
-  currentRecentActivityExpanded = !currentRecentActivityExpanded;
+  currentRecentActivityExpanded = true;
   renderRecentActivity();
+}
+
+async function handleRecentSeeAllClick(event) {
+  event.preventDefault();
+  window.history.pushState({}, "", "/activity");
+  await renderCurrentRoute();
+}
+
+async function handleActivityHistoryLoadMoreClick() {
+  await loadActivityHistoryPageEntries({ append: true });
 }
 
 async function renderHomeView() {
@@ -1714,6 +2182,12 @@ async function renderInventoryOverviewPage() {
       "Container paths are unavailable."
     );
   }
+}
+
+async function renderActivityHistoryPage() {
+  setActiveView("activity-history");
+  resetActivityHistoryPage();
+  await loadActivityHistoryPageEntries();
 }
 
 function renderContainerDetail(detail) {
@@ -2908,6 +3382,11 @@ async function renderCurrentRoute() {
     return;
   }
 
+  if (route.name === "activity-history") {
+    await renderActivityHistoryPage();
+    return;
+  }
+
   if (route.name === "container") {
     await renderContainerPage(route.containerId);
     return;
@@ -3863,7 +4342,30 @@ ui.scanManualForm.addEventListener("submit", handleScanManualSubmit);
 ui.scanRetryButton.addEventListener("click", handleScanRetryClick);
 ui.addEntryButton.addEventListener("click", handleAddEntryClick);
 ui.inventoryOverviewLink.addEventListener("click", handleInventoryOverviewLinkClick);
+ui.debugBulkDeleteItemsButton.addEventListener("click", () => {
+  openDebugBulkDeleteModal("item");
+});
+ui.debugBulkDeleteContainersButton.addEventListener("click", () => {
+  openDebugBulkDeleteModal("container");
+});
+ui.debugBulkDeleteConfirmationInput.addEventListener(
+  "input",
+  handleDebugBulkDeleteInput
+);
+ui.debugBulkDeleteConfirmButton.addEventListener(
+  "click",
+  handleDebugBulkDeleteConfirmClick
+);
+ui.debugBulkDeleteCancelButton.addEventListener(
+  "click",
+  handleDebugBulkDeleteCancelClick
+);
 ui.recentToggleButton.addEventListener("click", handleRecentToggleClick);
+ui.recentSeeAllLink.addEventListener("click", handleRecentSeeAllClick);
+ui.activityHistoryLoadMoreButton.addEventListener(
+  "click",
+  handleActivityHistoryLoadMoreClick
+);
 ui.containerAddItemButton.addEventListener("click", handleContainerAddItemClick);
 ui.containerAddContainerButton.addEventListener(
   "click",

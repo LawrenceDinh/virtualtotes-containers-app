@@ -5,15 +5,7 @@ const Database = require("better-sqlite3");
 const { config } = require("./config");
 
 function resolveBackupRoot() {
-  const input = process.env.BACKUP_PATH;
-
-  if (!input) {
-    return path.join(config.repoRoot, "backups");
-  }
-
-  return path.isAbsolute(input)
-    ? input
-    : path.resolve(config.repoRoot, input);
+  return config.backupPath || path.join(config.repoRoot, "backups");
 }
 
 function formatTimestamp(date) {

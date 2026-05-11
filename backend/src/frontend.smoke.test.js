@@ -46,7 +46,11 @@ function defaultRouteHandlers() {
       }),
     "GET /api/recent-objects": () =>
       createJsonResponse(200, {
-        recentObjects: []
+        limit: 10,
+        offset: 0,
+        recentObjects: [],
+        returnedCount: 0,
+        totalCount: 0
       })
   };
 }
@@ -302,8 +306,10 @@ test("frontend smoke covers recent objects rendering", async () => {
             username: "tester"
           }
         }),
-      "GET /api/recent-objects": () =>
+      "GET /api/recent-objects?limit=10&offset=0": () =>
         createJsonResponse(200, {
+          limit: 10,
+          offset: 0,
           recentObjects: [
             {
               actionType: "deleted",
@@ -392,8 +398,45 @@ test("frontend smoke covers recent objects rendering", async () => {
               occurredAt: "2026-04-28T20:00:00.000Z",
               photoPath: null,
               toLocation: "Top level"
+            },
+            {
+              actionType: "created",
+              activityLabel: "Created item",
+              canNavigate: true,
+              name: "Socket Set",
+              objectId: 10,
+              objectType: "item",
+              occurredAt: "2026-04-28T19:59:00.000Z",
+              photoPath: null,
+              toLocation: "Garage Tote"
+            },
+            {
+              actionType: "moved",
+              activityLabel: "Moved container",
+              canNavigate: true,
+              fromLocation: "Top level",
+              name: "Tool Box",
+              objectId: 11,
+              objectType: "container",
+              occurredAt: "2026-04-28T19:58:00.000Z",
+              photoPath: null,
+              toLocation: "Shelf"
+            },
+            {
+              actionType: "deleted",
+              activityLabel: "Deleted item",
+              canNavigate: false,
+              fromLocation: "Tool Box",
+              isDeleted: true,
+              name: "Old Wrench",
+              objectId: 12,
+              objectType: "item",
+              occurredAt: "2026-04-28T19:57:00.000Z",
+              photoPath: null
             }
-          ]
+          ],
+          returnedCount: 10,
+          totalCount: 20
         })
     }
   });
@@ -412,13 +455,18 @@ test("frontend smoke covers recent objects rendering", async () => {
       assert.equal(document.querySelector("[data-home-sections]").hidden, false);
       assert.equal(
         document.querySelector("[data-recent-summary]").textContent,
-        "Showing 5 of 7 recent activities"
+        "Showing 5 of 20 recent activities"
       );
       assert.equal(
         document.querySelector("[data-recent-toggle]").textContent,
         "Show more"
       );
       assert.equal(document.querySelector("[data-recent-toggle]").hidden, false);
+      assert.equal(document.querySelector("[data-recent-see-all]").hidden, false);
+      assert.equal(
+        document.querySelector("[data-recent-see-all]").getAttribute("href"),
+        "/activity"
+      );
       assert.match(document.querySelector(".home-view").textContent, /Recent Activity/);
       assert.doesNotMatch(
         document.querySelector(".home-view").textContent,
@@ -468,39 +516,20 @@ test("frontend smoke covers recent objects rendering", async () => {
         document.querySelectorAll("[data-recent-objects] li")
       );
 
-      assert.equal(expandedRows.length, 7);
-      assert.equal(expandedLinks.length, 5);
+      assert.equal(expandedRows.length, 10);
+      assert.equal(expandedLinks.length, 7);
       assert.equal(expandedLinks[4].getAttribute("href"), "/containers/7");
-      assert.equal(
-        document.querySelector("[data-recent-toggle]").textContent,
-        "Show less"
-      );
-      assert.equal(
-        document
-          .querySelector("[data-recent-objects]")
-          .classList.contains("recent-activity-list-expanded"),
-        true
-      );
+      assert.equal(expandedLinks[5].getAttribute("href"), "/items/10");
+      assert.equal(expandedLinks[6].getAttribute("href"), "/containers/11");
+      assert.equal(document.querySelector("[data-recent-toggle]").hidden, true);
     });
 
-    document.querySelector("[data-recent-toggle]").click();
-
-    await waitFor(() => {
-      assert.equal(
-        document.querySelectorAll("[data-recent-objects] li").length,
-        5
-      );
-      assert.equal(
-        document.querySelector("[data-recent-toggle]").textContent,
-        "Show more"
-      );
-      assert.equal(
-        document
-          .querySelector("[data-recent-objects]")
-          .classList.contains("recent-activity-list-expanded"),
-        false
-      );
-    });
+    assert.equal(
+      harness.requestLog.some(
+        (request) => request.key === "GET /api/recent-objects?limit=10&offset=0"
+      ),
+      true
+    );
 
     const recentLinks = Array.from(
       document.querySelectorAll("[data-recent-objects] [data-object-link]")
@@ -524,6 +553,190 @@ test("frontend smoke covers recent objects rendering", async () => {
       ),
       true
     );
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke routes from Home to paginated Activity History", async () => {
+  const firstPageActivities = Array.from({ length: 25 }, (_, index) => ({
+    actionType: index === 0 ? "deleted" : "created",
+    activityLabel: index === 0 ? "Deleted item" : "Created item",
+    canNavigate: index !== 0,
+    fromLocation: index === 0 ? "Garage Tote" : null,
+    isDeleted: index === 0,
+    name: index === 0 ? "Deleted Drill" : `History Item ${index + 1}`,
+    objectId: index + 1,
+    objectType: "item",
+    occurredAt: `2026-04-28T18:${String(59 - index).padStart(2, "0")}:00.000Z`,
+    photoPath: null,
+    toLocation: index === 0 ? null : "Top level"
+  }));
+  const secondPageActivities = Array.from({ length: 5 }, (_, index) => ({
+    actionType: "created",
+    activityLabel: "Created container",
+    canNavigate: true,
+    name: `History Container ${index + 26}`,
+    objectId: index + 26,
+    objectType: "container",
+    occurredAt: `2026-04-28T17:${String(59 - index).padStart(2, "0")}:00.000Z`,
+    photoPath: null,
+    toLocation: "Top level"
+  }));
+  const harness = await bootstrapFrontendHarness({
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/recent-objects?limit=10&offset=0": () =>
+        createJsonResponse(200, {
+          limit: 10,
+          offset: 0,
+          recentObjects: firstPageActivities.slice(0, 10),
+          returnedCount: 10,
+          totalCount: 30
+        }),
+      "GET /api/recent-objects?limit=25&offset=0": () =>
+        createJsonResponse(200, {
+          limit: 25,
+          offset: 0,
+          recentObjects: firstPageActivities,
+          returnedCount: 25,
+          totalCount: 30
+        }),
+      "GET /api/recent-objects?limit=25&offset=25": () =>
+        createJsonResponse(200, {
+          limit: 25,
+          offset: 25,
+          recentObjects: secondPageActivities,
+          returnedCount: 5,
+          totalCount: 30
+        })
+    }
+  });
+
+  try {
+    const { document, window } = harness;
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-recent-summary]").textContent,
+        "Showing 5 of 30 recent activities"
+      );
+      assert.equal(document.querySelectorAll("[data-recent-objects] li").length, 5);
+    });
+
+    document.querySelector("[data-recent-see-all]").dispatchEvent(
+      new window.MouseEvent("click", {
+        bubbles: true,
+        cancelable: true
+      })
+    );
+
+    await waitFor(() => {
+      const historyRows = document.querySelectorAll("[data-activity-history-list] li");
+
+      assert.equal(document.querySelector("[data-home-view]").hidden, true);
+      assert.equal(
+        document.querySelector("[data-activity-history-page]").hidden,
+        false
+      );
+      assert.equal(
+        document.querySelector("[data-activity-history-summary]").textContent,
+        "Showing 25 of 30 activity entries"
+      );
+      assert.equal(historyRows.length, 25);
+      assert.match(historyRows[0].textContent, /Deleted item: Deleted Drill/);
+      assert.equal(historyRows[0].querySelector("[data-object-link]"), null);
+      assert.equal(
+        document.querySelector("[data-activity-history-load-more]").hidden,
+        false
+      );
+    });
+
+    document.querySelector("[data-activity-history-load-more]").click();
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-activity-history-summary]").textContent,
+        "Showing 30 of 30 activity entries"
+      );
+      assert.equal(
+        document.querySelectorAll("[data-activity-history-list] li").length,
+        30
+      );
+      assert.equal(
+        document.querySelector("[data-activity-history-load-more]").hidden,
+        true
+      );
+    });
+
+    assert.equal(
+      harness.requestLog.some(
+        (request) => request.key === "GET /api/recent-objects?limit=10&offset=0"
+      ),
+      true
+    );
+    assert.equal(
+      harness.requestLog.some(
+        (request) => request.key === "GET /api/recent-objects?limit=25&offset=0"
+      ),
+      true
+    );
+    assert.equal(
+      harness.requestLog.some(
+        (request) => request.key === "GET /api/recent-objects?limit=25&offset=25"
+      ),
+      true
+    );
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke renders empty Activity History", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/activity",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/recent-objects?limit=25&offset=0": () =>
+        createJsonResponse(200, {
+          limit: 25,
+          offset: 0,
+          recentObjects: [],
+          returnedCount: 0,
+          totalCount: 0
+        })
+    }
+  });
+
+  try {
+    const { document } = harness;
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-activity-history-summary]").textContent,
+        "No activity yet."
+      );
+      assert.equal(
+        document.querySelector("[data-activity-history-empty]").hidden,
+        false
+      );
+      assert.equal(
+        document.querySelector("[data-activity-history-load-more]").hidden,
+        true
+      );
+    });
   } finally {
     harness.cleanup();
   }
@@ -758,13 +971,20 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
           ],
           counts: {
             containers: 2,
-            items: 2
+            items: 3
           },
           items: [
             {
               fullPath: "Loose Batteries",
               id: 3,
               name: "Loose Batteries",
+              path: [
+                {
+                  id: 3,
+                  name: "Loose Batteries",
+                  objectType: "item"
+                }
+              ],
               parentContainerId: null,
               photoPath: null,
               topLevel: true
@@ -777,7 +997,8 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
                 {
                   id: 4,
                   name: "Screwdriver",
-                  objectType: "item"
+                  objectType: "item",
+                  photoPath: "screwdriver.jpg"
                 },
                 {
                   id: 2,
@@ -793,13 +1014,33 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
               parentContainerId: 2,
               photoPath: "screwdriver.jpg",
               topLevel: false
+            },
+            {
+              fullPath: "Wrench > Garage Tote",
+              id: 5,
+              name: "Wrench",
+              path: [
+                {
+                  id: 5,
+                  name: "Wrench",
+                  objectType: "item"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ],
+              parentContainerId: 1,
+              photoPath: null,
+              topLevel: false
             }
           ],
           relationshipPaths: [
             {
               objectId: 1,
               objectType: "container",
-              path: "Top Level > Garage Tote",
+              path: "Garage Tote > Top Level",
               pathSegments: [
                 {
                   id: 1,
@@ -811,7 +1052,7 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
             {
               objectId: 2,
               objectType: "container",
-              path: "Top Level > Inner Bin > Garage Tote",
+              path: "Inner Bin > Garage Tote > Top Level",
               pathSegments: [
                 {
                   id: 2,
@@ -826,19 +1067,49 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
               ]
             },
             {
+              objectId: 3,
+              objectType: "item",
+              path: "Loose Batteries > Top Level",
+              pathSegments: [
+                {
+                  id: 3,
+                  name: "Loose Batteries",
+                  objectType: "item"
+                }
+              ]
+            },
+            {
               objectId: 4,
               objectType: "item",
-              path: "Top Level > Screwdriver > Inner Bin > Garage Tote",
+              path: "Screwdriver > Inner Bin > Garage Tote > Top Level",
               pathSegments: [
                 {
                   id: 4,
                   name: "Screwdriver",
-                  objectType: "item"
+                  objectType: "item",
+                  photoPath: "screwdriver.jpg"
                 },
                 {
                   id: 2,
                   name: "Inner Bin",
                   objectType: "container"
+                },
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ]
+            },
+            {
+              objectId: 5,
+              objectType: "item",
+              path: "Wrench > Garage Tote > Top Level",
+              pathSegments: [
+                {
+                  id: 5,
+                  name: "Wrench",
+                  objectType: "item"
                 },
                 {
                   id: 1,
@@ -914,19 +1185,51 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
         document.querySelector("[data-inventory-item-paths]").textContent,
         /Screwdriver/
       );
-      assert.doesNotMatch(
-        document.querySelector("[data-inventory-item-paths]").textContent,
-        /Top Level > Garage Tote/
+      assert.deepEqual(
+        Array.from(
+          document.querySelectorAll("[data-inventory-item-paths] .path-content")
+        ).map((node) => node.textContent),
+        [
+          "Loose Batteries > Top Level",
+          "Screwdriver > Inner Bin > Garage Tote > Top Level",
+          "Wrench > Garage Tote > Top Level"
+        ]
       );
       assert.match(
         document.querySelector("[data-inventory-container-paths]").textContent,
         /Garage Tote/
       );
+      assert.deepEqual(
+        Array.from(
+          document.querySelectorAll(
+            "[data-inventory-container-paths] .path-content"
+          )
+        ).map((node) => node.textContent),
+        ["Garage Tote > Top Level", "Inner Bin > Garage Tote > Top Level"]
+      );
       assert.doesNotMatch(
         document.querySelector("[data-inventory-container-paths]").textContent,
         /Screwdriver/
       );
+      assert.deepEqual(
+        Array.from(
+          document.querySelectorAll("[data-inventory-item-paths] .object-badge")
+        ).map((node) => node.textContent),
+        ["Item", "Item", "Item"]
+      );
+      assert.deepEqual(
+        Array.from(
+          document.querySelectorAll(
+            "[data-inventory-container-paths] .object-badge"
+          )
+        ).map((node) => node.textContent),
+        ["Container", "Container"]
+      );
       assert.match(
+        document.querySelector("[data-inventory-paths]").textContent,
+        /Screwdriver > Inner Bin > Garage Tote > Top Level/
+      );
+      assert.doesNotMatch(
         document.querySelector("[data-inventory-paths]").textContent,
         /Top Level > Screwdriver > Inner Bin > Garage Tote/
       );
@@ -935,6 +1238,12 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
           .querySelector('[data-inventory-paths] [href="/items/4"]')
           .textContent,
         "Screwdriver"
+      );
+      assert.equal(
+        document
+          .querySelector('[data-inventory-paths] [href="/items/4"] img')
+          .getAttribute("src"),
+        "/api/photos/item/4?v=screwdriver.jpg"
       );
     });
 
@@ -956,6 +1265,412 @@ test("frontend smoke renders inventory overview panels and navigation", async ()
       );
 
     assert.deepEqual(navigations, ["/items/4", "/containers/1"]);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke hides debug bulk delete controls when the flag is off", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/inventory-overview",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/inventory-overview": () =>
+        createJsonResponse(200, {
+          containers: [],
+          counts: {
+            containers: 0,
+            items: 0
+          },
+          debugBulkDeleteEnabled: false,
+          items: [],
+          relationshipPaths: []
+        })
+    }
+  });
+
+  try {
+    const { document } = harness;
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-debug-bulk-delete-items-zone]").hidden,
+        true
+      );
+      assert.equal(
+        document.querySelector("[data-debug-bulk-delete-containers-zone]").hidden,
+        true
+      );
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke disables debug bulk delete buttons when counts are zero", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/inventory-overview",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/inventory-overview": () =>
+        createJsonResponse(200, {
+          containers: [],
+          counts: {
+            containers: 0,
+            items: 0
+          },
+          debugBulkDeleteEnabled: true,
+          items: [],
+          relationshipPaths: []
+        })
+    }
+  });
+
+  try {
+    const { document } = harness;
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-debug-bulk-delete-items-zone]").hidden,
+        false
+      );
+      assert.equal(document.querySelector("[data-debug-delete-items]").disabled, true);
+      assert.equal(
+        document.querySelector("[data-debug-delete-containers]").disabled,
+        true
+      );
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke handles debug bulk delete preview, confirmation, success, and duplicate clicks", async () => {
+  let overviewCalls = 0;
+  let deleteRequests = 0;
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/inventory-overview",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/inventory-overview": () => {
+        overviewCalls += 1;
+
+        if (overviewCalls > 1) {
+          return createJsonResponse(200, {
+            containers: [
+              {
+                fullPath: "Garage Tote",
+                id: 1,
+                name: "Garage Tote",
+                parentContainerId: null,
+                photoPath: null,
+                topLevel: true
+              }
+            ],
+            counts: {
+              containers: 1,
+              items: 0
+            },
+            debugBulkDeleteEnabled: true,
+            items: [],
+            relationshipPaths: [
+              {
+                objectId: 1,
+                objectType: "container",
+                path: "Garage Tote > Top Level",
+                pathSegments: [
+                  {
+                    id: 1,
+                    name: "Garage Tote",
+                    objectType: "container"
+                  }
+                ]
+              }
+            ]
+          });
+        }
+
+        return createJsonResponse(200, {
+          containers: [
+            {
+              fullPath: "Garage Tote",
+              id: 1,
+              name: "Garage Tote",
+              parentContainerId: null,
+              photoPath: null,
+              topLevel: true
+            }
+          ],
+          counts: {
+            containers: 1,
+            items: 1
+          },
+          debugBulkDeleteEnabled: true,
+          items: [
+            {
+              fullPath: "Loose Battery",
+              id: 2,
+              name: "Loose Battery",
+              parentContainerId: null,
+              photoPath: null,
+              topLevel: true
+            }
+          ],
+          relationshipPaths: [
+            {
+              objectId: 1,
+              objectType: "container",
+              path: "Garage Tote > Top Level",
+              pathSegments: [
+                {
+                  id: 1,
+                  name: "Garage Tote",
+                  objectType: "container"
+                }
+              ]
+            },
+            {
+              objectId: 2,
+              objectType: "item",
+              path: "Loose Battery > Top Level",
+              pathSegments: [
+                {
+                  id: 2,
+                  name: "Loose Battery",
+                  objectType: "item"
+                }
+              ]
+            }
+          ]
+        });
+      },
+      "GET /api/debug/bulk-delete/containers/preview": () =>
+        createJsonResponse(200, {
+          affectedContainers: 1,
+          affectedItems: 1,
+          confirmationPhrase: "DELETE ALL CONTAINERS",
+          containersDeleted: true,
+          containersPreserved: false,
+          itemsDeleted: false,
+          itemsPreserved: true,
+          operation: "deleteAllContainers",
+          survivingItemsMovedToTopLevel: true
+        }),
+      "GET /api/debug/bulk-delete/items/preview": () =>
+        createJsonResponse(200, {
+          affectedContainers: 0,
+          affectedItems: 1,
+          confirmationPhrase: "DELETE ALL ITEMS",
+          containersDeleted: false,
+          containersPreserved: true,
+          itemsDeleted: true,
+          itemsPreserved: false,
+          operation: "deleteAllItems",
+          survivingItemsMovedToTopLevel: false
+        }),
+      "DELETE /api/debug/bulk-delete/items": () => {
+        deleteRequests += 1;
+        return createJsonResponse(200, {
+          backup: {
+            filename: "before_bulk_delete_items_20260511_120000.sqlite"
+          },
+          deletedContainers: 0,
+          deletedItems: 1,
+          movedItemsToTopLevel: 0,
+          success: true
+        });
+      }
+    }
+  });
+
+  try {
+    const { document, window } = harness;
+    const itemsButton = document.querySelector("[data-debug-delete-items]");
+    const containersButton = document.querySelector(
+      "[data-debug-delete-containers]"
+    );
+    const confirmButton = document.querySelector(
+      "[data-debug-bulk-delete-confirm]"
+    );
+    const cancelButton = document.querySelector("[data-debug-bulk-delete-cancel]");
+    const confirmationInput = document.querySelector(
+      "[data-debug-bulk-delete-confirmation-input]"
+    );
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-debug-bulk-delete-items-zone]").hidden,
+        false
+      );
+      assert.equal(itemsButton.disabled, false);
+      assert.equal(containersButton.disabled, false);
+    });
+
+    containersButton.click();
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-debug-bulk-delete-modal]").hidden,
+        false
+      );
+      assert.equal(
+        document.querySelector("[data-debug-bulk-delete-title]").textContent,
+        "Delete all containers"
+      );
+      assert.equal(
+        document.querySelector("[data-debug-bulk-delete-move-policy]").textContent,
+        "Moved to Top Level"
+      );
+    });
+    cancelButton.click();
+    assert.equal(
+      harness.requestLog.some(
+        (request) => request.method === "DELETE" && request.pathname.includes("bulk-delete")
+      ),
+      false
+    );
+
+    itemsButton.click();
+    await waitFor(() => {
+      assert.equal(confirmButton.disabled, true);
+      assert.equal(
+        document.querySelector("[data-debug-bulk-delete-phrase]").textContent,
+        "DELETE ALL ITEMS"
+      );
+    });
+    confirmationInput.value = "delete all items";
+    confirmationInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    assert.equal(confirmButton.disabled, true);
+    confirmationInput.value = "DELETE ALL ITEMS";
+    confirmationInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    assert.equal(confirmButton.disabled, false);
+
+    confirmButton.click();
+    confirmButton.click();
+
+    await waitFor(() => {
+      assert.equal(deleteRequests, 1);
+      assert.equal(
+        document.querySelector("[data-debug-bulk-delete-modal]").hidden,
+        true
+      );
+      assert.match(
+        document.querySelector("[data-inventory-overview-summary]").textContent,
+        /Deleted 1 item/
+      );
+      assert.equal(itemsButton.disabled, true);
+      assert.equal(containersButton.disabled, false);
+      assert.equal(
+        document.querySelector("[data-inventory-item-paths-empty]").hidden,
+        false
+      );
+    });
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("frontend smoke shows a safe debug bulk delete failure message", async () => {
+  const harness = await bootstrapFrontendHarness({
+    pathname: "/inventory-overview",
+    routeHandlers: {
+      "GET /api/auth/current-session": () =>
+        createJsonResponse(200, {
+          user: {
+            id: 1,
+            username: "tester"
+          }
+        }),
+      "GET /api/inventory-overview": () =>
+        createJsonResponse(200, {
+          containers: [],
+          counts: {
+            containers: 0,
+            items: 1
+          },
+          debugBulkDeleteEnabled: true,
+          items: [
+            {
+              fullPath: "Loose Battery",
+              id: 2,
+              name: "Loose Battery",
+              parentContainerId: null,
+              photoPath: null,
+              topLevel: true
+            }
+          ],
+          relationshipPaths: []
+        }),
+      "GET /api/debug/bulk-delete/items/preview": () =>
+        createJsonResponse(200, {
+          affectedContainers: 0,
+          affectedItems: 1,
+          confirmationPhrase: "DELETE ALL ITEMS",
+          containersDeleted: false,
+          containersPreserved: true,
+          itemsDeleted: true,
+          itemsPreserved: false,
+          operation: "deleteAllItems",
+          survivingItemsMovedToTopLevel: false
+        }),
+      "DELETE /api/debug/bulk-delete/items": () =>
+        createJsonResponse(500, {
+          error: "SQL stack trace /tmp/private/database.sqlite"
+        })
+    }
+  });
+
+  try {
+    const { document, window } = harness;
+    const itemsButton = document.querySelector("[data-debug-delete-items]");
+    const confirmButton = document.querySelector(
+      "[data-debug-bulk-delete-confirm]"
+    );
+    const confirmationInput = document.querySelector(
+      "[data-debug-bulk-delete-confirmation-input]"
+    );
+
+    await waitFor(() => {
+      assert.equal(itemsButton.disabled, false);
+    });
+
+    itemsButton.click();
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector("[data-debug-bulk-delete-modal]").hidden,
+        false
+      );
+    });
+    confirmationInput.value = "DELETE ALL ITEMS";
+    confirmationInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    confirmButton.click();
+
+    await waitFor(() => {
+      const errorText = document.querySelector(
+        "[data-debug-bulk-delete-error]"
+      ).textContent;
+
+      assert.equal(errorText, "Bulk delete failed. No changes were applied.");
+      assert.doesNotMatch(errorText, /sqlite|SQL|tmp|stack/i);
+      assert.equal(confirmButton.disabled, false);
+    });
   } finally {
     harness.cleanup();
   }

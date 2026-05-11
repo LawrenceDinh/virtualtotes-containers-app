@@ -85,7 +85,9 @@ const env = {
 
 const config = {
   repoRoot,
+  backupPath: resolveRepoPath(env.BACKUP_PATH || "./backups"),
   databasePath: resolveRepoPath(env.DATABASE_PATH || "./data/inventory.sqlite"),
+  enableDebugBulkDelete: env.ENABLE_DEBUG_BULK_DELETE === "true",
   photoPath: resolveRepoPath(env.PHOTO_PATH || "./photos"),
   sessionSecret: env.SESSION_SECRET || "change-me-before-real-use",
   localServerAddress: normalizeServerAddress(

@@ -89,6 +89,7 @@ async function startTestServer() {
 
 async function startTestServerWithPaths({
   databasePath,
+  extraEnv = {},
   ownedDirectory = null,
   photoPath
 }) {
@@ -105,10 +106,12 @@ async function startTestServerWithPaths({
       BOOTSTRAP_PASSWORD: "testpass",
       BOOTSTRAP_USERNAME: "tester",
       DATABASE_PATH: databasePath,
+      ENABLE_DEBUG_BULK_DELETE: "false",
       LOCAL_SERVER_ADDRESS: baseUrl,
       NODE_ENV: "test",
       PHOTO_PATH: photoPath,
-      SESSION_SECRET: "integration-test-secret"
+      SESSION_SECRET: "integration-test-secret",
+      ...extraEnv
     },
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -469,6 +472,19 @@ test("HTTP integration returns authenticated inventory overview with owned paths
     });
     const topLevelItemId = createTopLevelItem.body.item.id;
 
+    const createParentItem = await requestJson(
+      server.baseUrl,
+      `/api/containers/${parentContainerId}/items`,
+      {
+        body: JSON.stringify({
+          name: "Wrench"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+    const parentItemId = createParentItem.body.item.id;
+
     const createNestedItem = await requestJson(
       server.baseUrl,
       `/api/containers/${childContainerId}/items`,
@@ -514,7 +530,7 @@ test("HTTP integration returns authenticated inventory overview with owned paths
     assert.equal(overview.response.status, 200);
     assert.deepEqual(overview.body.counts, {
       containers: 2,
-      items: 2
+      items: 3
     });
     assert.deepEqual(
       overview.body.containers.map((container) => container.name),
@@ -522,7 +538,7 @@ test("HTTP integration returns authenticated inventory overview with owned paths
     );
     assert.deepEqual(
       overview.body.items.map((item) => item.name),
-      ["Loose Batteries", "Screwdriver"]
+      ["Loose Batteries", "Screwdriver", "Wrench"]
     );
 
     const parentContainer = overview.body.containers.find(
@@ -534,6 +550,7 @@ test("HTTP integration returns authenticated inventory overview with owned paths
     const topLevelItem = overview.body.items.find(
       (item) => item.id === topLevelItemId
     );
+    const parentItem = overview.body.items.find((item) => item.id === parentItemId);
     const nestedItem = overview.body.items.find((item) => item.id === nestedItemId);
 
     assert.equal(parentContainer.topLevel, true);
@@ -543,6 +560,8 @@ test("HTTP integration returns authenticated inventory overview with owned paths
     assert.equal(childContainer.fullPath, "Inner Bin > Garage Tote");
     assert.equal(topLevelItem.topLevel, true);
     assert.equal(topLevelItem.fullPath, "Loose Batteries");
+    assert.equal(parentItem.topLevel, false);
+    assert.equal(parentItem.fullPath, "Wrench > Garage Tote");
     assert.equal(nestedItem.topLevel, false);
     assert.equal(nestedItem.fullPath, "Screwdriver > Inner Bin > Garage Tote");
     assert.equal(nestedItem.photoPath, "screwdriver.jpg");
@@ -550,11 +569,18 @@ test("HTTP integration returns authenticated inventory overview with owned paths
     assert.deepEqual(
       overview.body.relationshipPaths.map((relationshipPath) => relationshipPath.path),
       [
-        "Top Level > Garage Tote",
-        "Top Level > Inner Bin > Garage Tote",
-        "Top Level > Loose Batteries",
-        "Top Level > Screwdriver > Inner Bin > Garage Tote"
+        "Garage Tote > Top Level",
+        "Inner Bin > Garage Tote > Top Level",
+        "Loose Batteries > Top Level",
+        "Screwdriver > Inner Bin > Garage Tote > Top Level",
+        "Wrench > Garage Tote > Top Level"
       ]
+    );
+    assert.equal(
+      overview.body.relationshipPaths.some((relationshipPath) =>
+        relationshipPath.path.startsWith("Top Level >")
+      ),
+      false
     );
     assert.equal(
       overview.body.containers.some((container) => container.name === "Other Tote"),
@@ -566,6 +592,191 @@ test("HTTP integration returns authenticated inventory overview with owned paths
     );
   } finally {
     await server.cleanup();
+  }
+});
+
+test("HTTP integration gates and runs debug bulk delete endpoints", async () => {
+  const serverWithFlagOff = await startTestServer();
+
+  try {
+    const login = await requestJson(serverWithFlagOff.baseUrl, "/api/auth/login", {
+      body: JSON.stringify({
+        password: "testpass",
+        username: "tester"
+      }),
+      headers: createJsonHeaders(),
+      method: "POST"
+    });
+    const sessionCookie = getCookieHeaderValue(
+      login.response.headers.get("set-cookie")
+    );
+
+    await requestJson(serverWithFlagOff.baseUrl, "/api/items", {
+      body: JSON.stringify({
+        name: "Loose Battery"
+      }),
+      headers: createJsonHeaders(sessionCookie),
+      method: "POST"
+    });
+
+    const rejectedPreview = await requestJson(
+      serverWithFlagOff.baseUrl,
+      "/api/debug/bulk-delete/items/preview",
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+    const rejectedDelete = await requestJson(
+      serverWithFlagOff.baseUrl,
+      "/api/debug/bulk-delete/items",
+      {
+        headers: {
+          Cookie: sessionCookie
+        },
+        method: "DELETE"
+      }
+    );
+    const database = new Database(serverWithFlagOff.databasePath);
+
+    try {
+      assert.equal(rejectedPreview.response.status, 404);
+      assert.equal(rejectedDelete.response.status, 404);
+      assert.equal(
+        database.prepare("SELECT COUNT(*) AS count FROM items").get().count,
+        1
+      );
+    } finally {
+      database.close();
+    }
+  } finally {
+    await serverWithFlagOff.cleanup();
+  }
+
+  const temporaryDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "containers-app-debug-bulk-")
+  );
+  const serverWithFlagOn = await startTestServerWithPaths({
+    databasePath: path.join(temporaryDirectory, "inventory.sqlite"),
+    extraEnv: {
+      BACKUP_PATH: path.join(temporaryDirectory, "backups"),
+      ENABLE_DEBUG_BULK_DELETE: "true"
+    },
+    ownedDirectory: temporaryDirectory,
+    photoPath: path.join(temporaryDirectory, "photos")
+  });
+
+  try {
+    const login = await requestJson(serverWithFlagOn.baseUrl, "/api/auth/login", {
+      body: JSON.stringify({
+        password: "testpass",
+        username: "tester"
+      }),
+      headers: createJsonHeaders(),
+      method: "POST"
+    });
+    const sessionCookie = getCookieHeaderValue(
+      login.response.headers.get("set-cookie")
+    );
+    const createContainer = await requestJson(
+      serverWithFlagOn.baseUrl,
+      "/api/containers",
+      {
+        body: JSON.stringify({
+          name: "Outer Tote",
+          qrCode: "qr-outer"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+    const containerId = createContainer.body.container.id;
+    const createChild = await requestJson(
+      serverWithFlagOn.baseUrl,
+      `/api/containers/${containerId}/children`,
+      {
+        body: JSON.stringify({
+          name: "Inner Box"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+    const childContainerId = createChild.body.container.id;
+
+    await requestJson(serverWithFlagOn.baseUrl, "/api/items", {
+      body: JSON.stringify({
+        name: "Loose Battery",
+        qrCode: "qr-loose"
+      }),
+      headers: createJsonHeaders(sessionCookie),
+      method: "POST"
+    });
+    await requestJson(
+      serverWithFlagOn.baseUrl,
+      `/api/containers/${childContainerId}/items`,
+      {
+        body: JSON.stringify({
+          name: "Miata"
+        }),
+        headers: createJsonHeaders(sessionCookie),
+        method: "POST"
+      }
+    );
+
+    const containerPreview = await requestJson(
+      serverWithFlagOn.baseUrl,
+      "/api/debug/bulk-delete/containers/preview",
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+    assert.equal(containerPreview.response.status, 200);
+    assert.equal(containerPreview.body.affectedContainers, 2);
+    assert.equal(containerPreview.body.affectedItems, 2);
+    assert.equal(containerPreview.body.survivingItemsMovedToTopLevel, true);
+
+    const deleteContainers = await requestJson(
+      serverWithFlagOn.baseUrl,
+      "/api/debug/bulk-delete/containers",
+      {
+        headers: {
+          Cookie: sessionCookie
+        },
+        method: "DELETE"
+      }
+    );
+
+    assert.equal(deleteContainers.response.status, 200);
+    assert.equal(deleteContainers.body.deletedContainers, 2);
+    assert.equal(deleteContainers.body.deletedItems, 0);
+    assert.equal(deleteContainers.body.movedItemsToTopLevel, 2);
+    assert.match(
+      deleteContainers.body.backup.filename,
+      /^before_bulk_delete_containers_\d{8}_\d{6}\.sqlite$/
+    );
+
+    const overview = await requestJson(
+      serverWithFlagOn.baseUrl,
+      "/api/inventory-overview",
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+
+    assert.equal(overview.body.counts.containers, 0);
+    assert.equal(overview.body.counts.items, 2);
+    assert.deepEqual(
+      overview.body.relationshipPaths.map((relationshipPath) => relationshipPath.path),
+      ["Loose Battery > Top Level", "Miata > Top Level"]
+    );
+  } finally {
+    await serverWithFlagOn.cleanup();
   }
 });
 
@@ -721,6 +932,150 @@ test("HTTP integration returns authenticated recent activity for creates, moves,
       activity.body.recentObjects.some((entry) => entry.actionType === "opened"),
       false
     );
+  } finally {
+    await server.cleanup();
+  }
+});
+
+test("HTTP integration paginates recent activity with scoped totals and safe params", async () => {
+  const server = await startTestServer();
+
+  try {
+    const sessionCookie = await loginAndGetSessionCookie(server.baseUrl);
+    const otherUserId = seedUser(server.databasePath, {
+      password: "otherpass",
+      username: "other"
+    });
+    const database = new Database(server.databasePath);
+
+    try {
+      const insertActivity = database.prepare(
+        `
+          INSERT INTO recent_activity (
+            userId,
+            actionType,
+            objectType,
+            objectId,
+            objectName,
+            toLocation
+          )
+          VALUES (?, 'created', 'item', NULL, ?, 'Top level')
+        `
+      );
+
+      for (let index = 1; index <= 15; index += 1) {
+        insertActivity.run(1, `Owner Activity ${index}`);
+      }
+
+      for (let index = 1; index <= 4; index += 1) {
+        insertActivity.run(otherUserId, `Other Activity ${index}`);
+      }
+    } finally {
+      database.close();
+    }
+
+    const firstPage = await requestJson(
+      server.baseUrl,
+      "/api/recent-objects?limit=10&offset=0",
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+    const secondPage = await requestJson(
+      server.baseUrl,
+      "/api/recent-objects?limit=10&offset=10",
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+    const cappedPage = await requestJson(
+      server.baseUrl,
+      "/api/recent-objects?limit=500&offset=0",
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+    const invalidLimit = await requestJson(
+      server.baseUrl,
+      "/api/recent-objects?limit=abc",
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+    const invalidOffset = await requestJson(
+      server.baseUrl,
+      "/api/recent-objects?offset=-1",
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+    const zeroLimit = await requestJson(
+      server.baseUrl,
+      "/api/recent-objects?limit=0",
+      {
+        headers: {
+          Cookie: sessionCookie
+        }
+      }
+    );
+
+    assert.equal(firstPage.response.status, 200);
+    assert.equal(firstPage.body.limit, 10);
+    assert.equal(firstPage.body.offset, 0);
+    assert.equal(firstPage.body.returnedCount, 10);
+    assert.equal(firstPage.body.totalCount, 15);
+    assert.deepEqual(
+      firstPage.body.recentObjects.map((activity) => activity.name),
+      [
+        "Owner Activity 15",
+        "Owner Activity 14",
+        "Owner Activity 13",
+        "Owner Activity 12",
+        "Owner Activity 11",
+        "Owner Activity 10",
+        "Owner Activity 9",
+        "Owner Activity 8",
+        "Owner Activity 7",
+        "Owner Activity 6"
+      ]
+    );
+    assert.equal(secondPage.response.status, 200);
+    assert.equal(secondPage.body.returnedCount, 5);
+    assert.equal(secondPage.body.totalCount, 15);
+    assert.deepEqual(
+      secondPage.body.recentObjects.map((activity) => activity.name),
+      [
+        "Owner Activity 5",
+        "Owner Activity 4",
+        "Owner Activity 3",
+        "Owner Activity 2",
+        "Owner Activity 1"
+      ]
+    );
+    assert.equal(cappedPage.body.limit, 100);
+    assert.equal(cappedPage.body.totalCount, 15);
+    assert.equal(
+      cappedPage.body.recentObjects.some((activity) =>
+        activity.name.startsWith("Other Activity")
+      ),
+      false
+    );
+    assert.equal(invalidLimit.response.status, 400);
+    assert.match(invalidLimit.body.error, /limit/i);
+    assert.equal(invalidOffset.response.status, 400);
+    assert.match(invalidOffset.body.error, /offset/i);
+    assert.equal(zeroLimit.response.status, 400);
+    assert.match(zeroLimit.body.error, /limit/i);
   } finally {
     await server.cleanup();
   }

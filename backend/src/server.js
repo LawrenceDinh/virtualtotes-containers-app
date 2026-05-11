@@ -4,7 +4,7 @@ const path = require("path");
 const pkg = require(path.join(__dirname, "..", "package.json"));
 
 const { config, getServerBinding } = require("./config");
-const { initializeDatabase, withDatabase } = require("./database");
+const { initializeDatabase, openDatabase, withDatabase } = require("./database");
 const {
   authenticateCredentials,
   clearSessionCookie,
@@ -35,13 +35,21 @@ const {
 } = require("./items");
 const { getInventoryOverview } = require("./inventory-overview");
 const {
+  deleteAllContainers,
+  deleteAllItems,
+  getBulkDeleteContainersPreview,
+  getBulkDeleteItemsPreview
+} = require("./debug-bulk-delete");
+const {
   getObjectPhotoFile,
   removeObjectPhoto,
   storeObjectPhoto
 } = require("./photos");
 const { linkQr, openByQr, removeQr, replaceQr } = require("./qr");
 const {
+  DEFAULT_RECENT_ACTIVITY_LIMIT,
   listRecentActivity,
+  MAX_RECENT_ACTIVITY_LIMIT,
   recordRecentObjectOpen
 } = require("./recent-objects");
 const { searchObjects } = require("./search");
@@ -395,10 +403,46 @@ function handleGetItemDetail(request, response, itemId) {
   sendJson(response, 200, result);
 }
 
-function handleListRecentObjects(request, response) {
+function parsePaginationInteger(value, fieldName) {
+  if (value === null) {
+    return null;
+  }
+
+  if (!/^\d+$/.test(value)) {
+    throw createHttpError(400, `${fieldName} must be a non-negative integer`);
+  }
+
+  return Number(value);
+}
+
+function parseRecentActivityQuery(requestUrl) {
+  const parsedLimit = parsePaginationInteger(
+    requestUrl.searchParams.get("limit"),
+    "limit"
+  );
+  const parsedOffset = parsePaginationInteger(
+    requestUrl.searchParams.get("offset"),
+    "offset"
+  );
+
+  if (parsedLimit === 0) {
+    throw createHttpError(400, "limit must be greater than 0");
+  }
+
+  return {
+    limit:
+      parsedLimit === null
+        ? DEFAULT_RECENT_ACTIVITY_LIMIT
+        : Math.min(parsedLimit, MAX_RECENT_ACTIVITY_LIMIT),
+    offset: parsedOffset === null ? 0 : parsedOffset
+  };
+}
+
+function handleListRecentObjects(request, response, requestUrl) {
   const user = requireAuthenticatedUser(request);
+  const queryOptions = parseRecentActivityQuery(requestUrl);
   const result = withDatabase((database) =>
-    listRecentActivity(database, user.id)
+    listRecentActivity(database, user.id, queryOptions)
   );
 
   sendJson(response, 200, result);
@@ -409,6 +453,54 @@ function handleGetInventoryOverview(request, response) {
   const result = withDatabase((database) =>
     getInventoryOverview(database, user.id)
   );
+
+  sendJson(response, 200, result);
+}
+
+function handlePreviewBulkDeleteItems(request, response) {
+  const user = requireAuthenticatedUser(request);
+  const result = withDatabase((database) =>
+    getBulkDeleteItemsPreview(database, user.id)
+  );
+
+  sendJson(response, 200, result);
+}
+
+function handlePreviewBulkDeleteContainers(request, response) {
+  const user = requireAuthenticatedUser(request);
+  const result = withDatabase((database) =>
+    getBulkDeleteContainersPreview(database, user.id)
+  );
+
+  sendJson(response, 200, result);
+}
+
+async function handleDeleteAllItems(request, response) {
+  const user = requireAuthenticatedUser(request);
+  const database = openDatabase();
+
+  let result;
+
+  try {
+    result = await deleteAllItems(database, user.id);
+  } finally {
+    database.close();
+  }
+
+  sendJson(response, 200, result);
+}
+
+async function handleDeleteAllContainers(request, response) {
+  const user = requireAuthenticatedUser(request);
+  const database = openDatabase();
+
+  let result;
+
+  try {
+    result = await deleteAllContainers(database, user.id);
+  } finally {
+    database.close();
+  }
 
   sendJson(response, 200, result);
 }
@@ -588,7 +680,7 @@ async function handleRequest(request, response) {
     request.method === "GET" &&
     requestUrl.pathname === "/api/recent-objects"
   ) {
-    handleListRecentObjects(request, response);
+    handleListRecentObjects(request, response, requestUrl);
     return;
   }
 
@@ -597,6 +689,38 @@ async function handleRequest(request, response) {
     requestUrl.pathname === "/api/inventory-overview"
   ) {
     handleGetInventoryOverview(request, response);
+    return;
+  }
+
+  if (
+    request.method === "GET" &&
+    requestUrl.pathname === "/api/debug/bulk-delete/items/preview"
+  ) {
+    handlePreviewBulkDeleteItems(request, response);
+    return;
+  }
+
+  if (
+    request.method === "DELETE" &&
+    requestUrl.pathname === "/api/debug/bulk-delete/items"
+  ) {
+    await handleDeleteAllItems(request, response);
+    return;
+  }
+
+  if (
+    request.method === "GET" &&
+    requestUrl.pathname === "/api/debug/bulk-delete/containers/preview"
+  ) {
+    handlePreviewBulkDeleteContainers(request, response);
+    return;
+  }
+
+  if (
+    request.method === "DELETE" &&
+    requestUrl.pathname === "/api/debug/bulk-delete/containers"
+  ) {
+    await handleDeleteAllContainers(request, response);
     return;
   }
 

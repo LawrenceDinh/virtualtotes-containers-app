@@ -196,6 +196,14 @@
                 Loading recent activity...
               </p>
             </div>
+            <a
+              class="text-link recent-see-all"
+              href="/activity"
+              data-recent-see-all
+              hidden
+            >
+              See all
+            </a>
 
             <ul class="object-list" data-recent-objects></ul>
             <p class="empty-state" data-recent-empty hidden>
@@ -243,6 +251,30 @@
           </section>
         </div>
 
+        <section class="panel detail-page" data-activity-history-page hidden>
+          <div class="detail-header">
+            <a class="back-link" href="/">Back to Home</a>
+            <p class="section-kicker">Recent</p>
+            <h2>Activity History</h2>
+            <p class="section-summary" data-activity-history-summary>
+              Loading activity history...
+            </p>
+          </div>
+
+          <ul class="object-list" data-activity-history-list></ul>
+          <p class="empty-state" data-activity-history-empty hidden>
+            No activity yet.
+          </p>
+          <button
+            class="secondary-button recent-toggle"
+            type="button"
+            data-activity-history-load-more
+            hidden
+          >
+            Load more
+          </button>
+        </section>
+
         <section class="detail-page" data-inventory-overview-page hidden>
           <div class="detail-header">
             <a class="back-link" href="/">Back to Home</a>
@@ -263,6 +295,19 @@
                 Loading items...
               </p>
             </div>
+            <div class="debug-cleanup-zone" data-debug-bulk-delete-items-zone hidden>
+              <div>
+                <p class="section-kicker">Debug cleanup</p>
+                <p class="helper-text">Protected local reset tool.</p>
+              </div>
+              <button
+                class="danger-button"
+                type="button"
+                data-debug-delete-items
+              >
+                Delete all items
+              </button>
+            </div>
             <ul class="object-list" data-inventory-items></ul>
             <p class="empty-state" data-inventory-items-empty hidden>
               No items yet.
@@ -278,6 +323,19 @@
               <p class="section-summary" data-inventory-containers-summary>
                 Loading containers...
               </p>
+            </div>
+            <div class="debug-cleanup-zone" data-debug-bulk-delete-containers-zone hidden>
+              <div>
+                <p class="section-kicker">Debug cleanup</p>
+                <p class="helper-text">Protected local reset tool.</p>
+              </div>
+              <button
+                class="danger-button"
+                type="button"
+                data-debug-delete-containers
+              >
+                Delete all containers
+              </button>
             </div>
             <ul class="object-list" data-inventory-containers></ul>
             <p class="empty-state" data-inventory-containers-empty hidden>
@@ -312,6 +370,79 @@
               </section>
             </div>
           </section>
+
+          <div
+            class="modal-backdrop"
+            data-debug-bulk-delete-modal
+            hidden
+          >
+            <section
+              class="modal-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="debug-bulk-delete-title"
+            >
+              <p class="section-kicker">Debug cleanup</p>
+              <h2 id="debug-bulk-delete-title" data-debug-bulk-delete-title>
+                Confirm bulk delete
+              </h2>
+              <p class="section-summary" data-debug-bulk-delete-summary>
+                Loading preview...
+              </p>
+              <dl class="preview-list">
+                <div>
+                  <dt>Items affected</dt>
+                  <dd data-debug-bulk-delete-items-affected>0</dd>
+                </div>
+                <div>
+                  <dt>Containers affected</dt>
+                  <dd data-debug-bulk-delete-containers-affected>0</dd>
+                </div>
+                <div>
+                  <dt>Items</dt>
+                  <dd data-debug-bulk-delete-items-policy>Preserved</dd>
+                </div>
+                <div>
+                  <dt>Containers</dt>
+                  <dd data-debug-bulk-delete-containers-policy>Preserved</dd>
+                </div>
+                <div>
+                  <dt>Surviving items</dt>
+                  <dd data-debug-bulk-delete-move-policy>Stay in place</dd>
+                </div>
+              </dl>
+              <label class="form-field">
+                Type the exact confirmation phrase
+                <span class="confirmation-phrase" data-debug-bulk-delete-phrase>
+                  DELETE ALL ITEMS
+                </span>
+                <input
+                  class="text-input"
+                  type="text"
+                  autocomplete="off"
+                  data-debug-bulk-delete-confirmation-input
+                >
+              </label>
+              <p class="form-error" data-debug-bulk-delete-error hidden></p>
+              <div class="form-actions">
+                <button
+                  class="danger-button"
+                  type="button"
+                  data-debug-bulk-delete-confirm
+                  disabled
+                >
+                  Confirm delete
+                </button>
+                <button
+                  class="secondary-button"
+                  type="button"
+                  data-debug-bulk-delete-cancel
+                >
+                  Cancel
+                </button>
+              </div>
+            </section>
+          </div>
         </section>
 
         <section class="panel detail-page" data-scan-page hidden>

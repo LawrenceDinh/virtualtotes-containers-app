@@ -2,6 +2,8 @@ const { getContainerPathInfo, getItemPathInfo } = require("./paths");
 const { validateOwnedObject } = require("./validation");
 
 const DEFAULT_RECENT_OBJECT_LIMIT = 20;
+const DEFAULT_RECENT_ACTIVITY_LIMIT = 10;
+const MAX_RECENT_ACTIVITY_LIMIT = 100;
 
 const ACTIVITY_LABEL_BY_ACTION = Object.freeze({
   created: "Created",
@@ -84,13 +86,72 @@ function getActivityObject(database, activity) {
   );
 }
 
+function getObjectsByType(database, userId, objectType, objectIds) {
+  const uniqueObjectIds = Array.from(new Set(objectIds)).filter((objectId) =>
+    Number.isInteger(objectId)
+  );
+
+  if (uniqueObjectIds.length === 0) {
+    return new Map();
+  }
+
+  const tableName = objectType === "container" ? "containers" : "items";
+  const placeholders = uniqueObjectIds.map(() => "?").join(", ");
+  const rows = database
+    .prepare(
+      `
+        SELECT id, userId, name, photoPath, qrCode, parentContainerId
+        FROM ${tableName}
+        WHERE userId = ? AND id IN (${placeholders})
+      `
+    )
+    .all(userId, ...uniqueObjectIds);
+
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+function getActivityObjectMaps(database, userId, activities) {
+  const containerIds = [];
+  const itemIds = [];
+
+  for (const activity of activities) {
+    if (activity.actionType === "deleted" || !activity.objectId) {
+      continue;
+    }
+
+    if (activity.objectType === "container") {
+      containerIds.push(activity.objectId);
+    } else if (activity.objectType === "item") {
+      itemIds.push(activity.objectId);
+    }
+  }
+
+  return {
+    containers: getObjectsByType(database, userId, "container", containerIds),
+    items: getObjectsByType(database, userId, "item", itemIds)
+  };
+}
+
+function getActivityObjectFromMaps(activity, objectMaps) {
+  if (activity.actionType === "deleted" || !activity.objectId) {
+    return null;
+  }
+
+  const objectMap =
+    activity.objectType === "container" ? objectMaps.containers : objectMaps.items;
+
+  return objectMap.get(activity.objectId) || null;
+}
+
 function formatActivityLabel(actionType, objectType) {
   const actionLabel = ACTIVITY_LABEL_BY_ACTION[actionType] || "Updated";
   return `${actionLabel} ${objectType}`;
 }
 
-function formatRecentActivity(database, activity) {
-  const object = getActivityObject(database, activity);
+function formatRecentActivity(database, activity, objectMaps = null) {
+  const object = objectMaps
+    ? getActivityObjectFromMaps(activity, objectMaps)
+    : getActivityObject(database, activity);
   const photoUrl = object && object.photoPath
     ? `/api/photos/${activity.objectType}/${activity.objectId}?v=${encodeURIComponent(object.photoPath)}`
     : null;
@@ -121,6 +182,18 @@ function normalizeRecentObjectLimit(limit) {
   return Number.isInteger(limit) && limit > 0
     ? limit
     : DEFAULT_RECENT_OBJECT_LIMIT;
+}
+
+function normalizeRecentActivityLimit(limit) {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    return DEFAULT_RECENT_ACTIVITY_LIMIT;
+  }
+
+  return Math.min(limit, MAX_RECENT_ACTIVITY_LIMIT);
+}
+
+function normalizeRecentActivityOffset(offset) {
+  return Number.isInteger(offset) && offset >= 0 ? offset : 0;
 }
 
 function recordRecentObjectOpen(database, userId, objectType, objectId, options = {}) {
@@ -198,7 +271,17 @@ function recordRecentActivity(database, userId, activity) {
 }
 
 function listRecentActivity(database, userId, options = {}) {
-  const limit = normalizeRecentObjectLimit(options.limit);
+  const limit = normalizeRecentActivityLimit(options.limit);
+  const offset = normalizeRecentActivityOffset(options.offset);
+  const totalCount = database
+    .prepare(
+      `
+        SELECT COUNT(*) AS count
+        FROM recent_activity
+        WHERE userId = ? AND actionType != 'opened'
+      `
+    )
+    .get(userId).count;
   const activities = database
     .prepare(
       `
@@ -216,14 +299,21 @@ function listRecentActivity(database, userId, options = {}) {
         WHERE userId = ? AND actionType != 'opened'
         ORDER BY createdAt DESC, id DESC
         LIMIT ?
+        OFFSET ?
       `
     )
-    .all(userId, limit)
-    .map((activity) => formatRecentActivity(database, activity));
+    .all(userId, limit, offset);
+  const objectMaps = getActivityObjectMaps(database, userId, activities);
+  const recentObjects = activities.map((activity) =>
+    formatRecentActivity(database, activity, objectMaps)
+  );
 
   return {
     limit,
-    recentObjects: activities
+    offset,
+    recentObjects,
+    returnedCount: recentObjects.length,
+    totalCount
   };
 }
 
@@ -305,7 +395,9 @@ function listRecentObjects(database, userId, options = {}) {
 }
 
 module.exports = {
+  DEFAULT_RECENT_ACTIVITY_LIMIT,
   DEFAULT_RECENT_OBJECT_LIMIT,
+  MAX_RECENT_ACTIVITY_LIMIT,
   getParentLocationSnapshot,
   listRecentActivity,
   listRecentObjects,

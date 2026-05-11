@@ -14,9 +14,24 @@ Components
 - QR flow: Each object (container or item) may have an associated `qrCode`. Scanning a QR triggers lookup to open, link, or create an object. QR uniqueness is enforced by the backend.
 - Search: supported by simple SQL queries against the SQLite DB (see `backend/src/search.js`).
 - Inventory overview: `backend/src/inventory-overview.js` returns owned object counts, item/container lists, and relationship paths for the overview page.
-- Recent activity: `backend/src/recent-objects.js` stores recent create, move, and delete activity with object name/location snapshots. Legacy opened-object tracking remains separate and is not shown as activity.
+- Paths: `backend/src/paths.js` builds object-to-parent path segments. Relationship paths display from the listed object outward toward the root, with `Top Level` as the rightmost segment.
+- Recent activity: `backend/src/recent-objects.js` stores recent create, move, and delete activity with object name/location snapshots. The Home panel requests a capped subset, while `/activity` uses the same endpoint with pagination and total counts for full Activity History. Legacy opened-object tracking remains separate and is not shown as activity.
 - Container deletion: `backend/src/containers.js` requires an explicit content strategy for non-empty container deletion and moves only direct children inside a transaction.
 - Backup/restore: local scripts `backend/src/backup-local.js` and `backend/src/restore-local.js` copy the DB and photos into a timestamped `backups/` folder and produce a `manifest.json`.
+- Debug cleanup: `backend/src/debug-bulk-delete.js` implements optional local debug/admin bulk-delete controls. The endpoints are disabled by default, require `ENABLE_DEBUG_BULK_DELETE=true`, use preview responses, and create a SQLite backup before destructive transactional work.
+
+Backend modules
+---------------
+- `auth.js` — password hashing, bootstrap user, session cookies, session lookup.
+- `validation.js` — ownership, parent-container validation, QR uniqueness, circular move prevention, upload validation.
+- `containers.js` / `items.js` — object CRUD, movement, deletion, recent activity, photo cleanup.
+- `paths.js` — shared path and relationship path generation.
+- `inventory-overview.js` — counts, item/container panels, relationship path data, debug flag.
+- `qr.js` — open, link, replace, and remove QR codes.
+- `photos.js` — safe disk photo storage and private serving.
+- `search.js` — mixed item/container search.
+- `recent-objects.js` — recent activity snapshots, legacy open tracking, pagination/counts.
+- `backups.js`, `backup-local.js`, `restore-local.js` — SQLite backup helper and local DB/photo backup/restore scripts.
 
 Runtime configuration
 ---------------------
@@ -26,6 +41,7 @@ Primary env vars (see `backend/.env.example`):
 - `PHOTO_PATH` — directory where photos are stored (default `./photos`).
 - `SESSION_SECRET` — cryptographic secret for signing sessions; replace for real deployments.
 - `LOCAL_SERVER_ADDRESS` — full address used for some internal URL calculations (default `http://0.0.0.0:3000`).
+- `ENABLE_DEBUG_BULK_DELETE` — optional debug/admin cleanup gate. Keep committed examples set to `false`.
 - `BOOTSTRAP_USERNAME` / `BOOTSTRAP_PASSWORD` — optional credentials used to create the first account if the users table is empty.
 
 Startup & deployment

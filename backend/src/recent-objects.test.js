@@ -6,9 +6,11 @@ const test = require("node:test");
 const Database = require("better-sqlite3");
 
 const {
+  DEFAULT_RECENT_ACTIVITY_LIMIT,
   DEFAULT_RECENT_OBJECT_LIMIT,
   listRecentActivity,
   listRecentObjects,
+  MAX_RECENT_ACTIVITY_LIMIT,
   recordRecentActivity,
   recordRecentObjectOpen
 } = require("./recent-objects");
@@ -361,6 +363,84 @@ test("recordRecentActivity lists newest activity and keeps deleted snapshots", (
           toLocation: "Top level"
         }
       ]
+    );
+  } finally {
+    database.close();
+  }
+});
+
+test("listRecentActivity paginates activity entries and returns scoped totals", () => {
+  const database = createTestDatabase();
+
+  try {
+    for (let index = 1; index <= 12; index += 1) {
+      recordRecentActivity(database, 1, {
+        actionType: "created",
+        objectId: index <= 4 ? index : null,
+        objectName: `Owner Activity ${index}`,
+        objectType: index % 2 === 0 ? "item" : "container",
+        toLocation: "Top level"
+      });
+    }
+
+    for (let index = 1; index <= 3; index += 1) {
+      recordRecentActivity(database, 2, {
+        actionType: "created",
+        objectId: 4,
+        objectName: `Other Activity ${index}`,
+        objectType: "item",
+        toLocation: "Top level"
+      });
+    }
+
+    const firstPage = listRecentActivity(database, 1, {
+      limit: 5,
+      offset: 0
+    });
+    const secondPage = listRecentActivity(database, 1, {
+      limit: 5,
+      offset: 5
+    });
+    const defaultPage = listRecentActivity(database, 1);
+    const cappedPage = listRecentActivity(database, 1, {
+      limit: MAX_RECENT_ACTIVITY_LIMIT + 50,
+      offset: 0
+    });
+
+    assert.equal(defaultPage.limit, DEFAULT_RECENT_ACTIVITY_LIMIT);
+    assert.equal(firstPage.limit, 5);
+    assert.equal(firstPage.offset, 0);
+    assert.equal(firstPage.returnedCount, 5);
+    assert.equal(firstPage.totalCount, 12);
+    assert.equal(secondPage.offset, 5);
+    assert.equal(secondPage.returnedCount, 5);
+    assert.equal(secondPage.totalCount, 12);
+    assert.equal(cappedPage.limit, MAX_RECENT_ACTIVITY_LIMIT);
+    assert.deepEqual(
+      firstPage.recentObjects.map((activity) => activity.name),
+      [
+        "Owner Activity 12",
+        "Owner Activity 11",
+        "Owner Activity 10",
+        "Owner Activity 9",
+        "Owner Activity 8"
+      ]
+    );
+    assert.deepEqual(
+      secondPage.recentObjects.map((activity) => activity.name),
+      [
+        "Owner Activity 7",
+        "Owner Activity 6",
+        "Owner Activity 5",
+        "Owner Activity 4",
+        "Owner Activity 3"
+      ]
+    );
+    assert.equal(
+      firstPage.recentObjects.some((activity) =>
+        activity.name.startsWith("Other Activity")
+      ),
+      false
     );
   } finally {
     database.close();
